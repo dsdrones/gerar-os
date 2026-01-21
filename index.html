@@ -89,17 +89,26 @@
                     </div>
                 </div>
 
-                <div id="tab-mapas-admin" class="hidden">
-                    <div class="section-header"><h2>Visualizador</h2></div>
-                    <div class="form-card">
-                        <div style="display:flex; gap:10px;">
-                            <select id="map-admin-client-select" onchange="loadAdminFarmsList(this.value)"><option>Cliente...</option></select>
-                            <select id="map-admin-farm-select" onchange="loadAdminMap(this.value)" disabled><option>Fazenda...</option></select>
-                            <button class="btn btn-primary" onclick="loadAllFarmsOnMap()">Ver Tudo</button>
-                        </div>
-                    </div>
-                    <div id="admin-map-container" style="flex:1; border:1px solid #ccc; height:100%;"><div id="admin-map" style="width:100%;height:100%;"></div></div>
-                </div>
+                <<div id="tab-mapas-admin" class="hidden" style="height: 100%; display: flex; flex-direction: column;">
+    
+    <div id="map-controls-bar">
+        <h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap;">Visão Geral</h2>
+        
+        <select id="map-admin-client-select" onchange="loadAdminFarmsList(this.value)">
+            <option value="">Filtrar Cliente...</option>
+        </select>
+        
+        <select id="map-admin-farm-select" disabled onchange="loadAdminMap(this.value)">
+            <option>Selecione a Fazenda...</option>
+        </select>
+        
+        <button class="btn btn-primary" onclick="loadAllFarmsOnMap()" title="Ver Tudo">
+            <i class="fa-solid fa-earth-americas"></i> Todos
+        </button>
+    </div>
+
+    <div id="admin-map"></div>
+</div>
 
                 <div id="tab-solicitacoes" class="hidden">
                     <div class="section-header"><h2>Solicitações de Serviço</h2></div>

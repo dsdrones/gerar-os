@@ -371,7 +371,12 @@ async function uploadFarm() {
     const numero = document.getElementById('farm-number').value;
     const uid = document.getElementById('farm-client-select').value;
     const file = document.getElementById('kml-file').files[0];
-    if(!nome || !numero || !uid || !file) return alert("Preencha tudo!");
+    
+    // Troquei alert por showToast error
+    if(!nome || !numero || !uid || !file) {
+        showToast("Por favor, preencha todos os campos.", "error");
+        return;
+    }
     
     const text = await file.text();
     const geojson = toGeoJSON.kml(new DOMParser().parseFromString(text, 'text/xml'));
@@ -389,8 +394,36 @@ async function uploadFarm() {
         }
     });
     
-    if(talhoes.length===0) return alert("KML inválido.");
-    db.collection('fazendas').add({ nome: nome, numero: parseInt(numero), donoUID: uid, talhoes: talhoes, criadoEm: new Date() }).then(() => {alert("Salvo!"); document.getElementById('farm-name').value='';});
+    // Troquei alert por showToast error
+    if(talhoes.length === 0) {
+        showToast("O arquivo KML não contém polígonos válidos.", "error");
+        return;
+    }
+
+    db.collection('fazendas').add({ 
+        nome: nome, 
+        numero: parseInt(numero), 
+        donoUID: uid, 
+        talhoes: talhoes, 
+        criadoEm: new Date() 
+    }).then(() => {
+        // --- AQUI ESTÁ A MUDANÇA PRINCIPAL ---
+        showToast("Fazenda cadastrada com sucesso!", "success");
+        
+        // Limpa os campos
+        document.getElementById('farm-name').value = '';
+        document.getElementById('farm-number').value = '';
+        document.getElementById('kml-file').value = '';
+        document.getElementById('file-name-display').innerText = '';
+        
+        // Atualiza a lista no mapa se o cliente estiver selecionado
+        const currentFilter = document.getElementById('map-admin-client-select').value;
+        if(currentFilter === uid) {
+            loadAdminFarmsList(uid);
+        }
+    }).catch(e => {
+        showToast("Erro ao salvar: " + e.message, "error");
+    });
 }
 
 function updateFileName(input) {
@@ -423,48 +456,191 @@ function updateFileName(input) {
     }
 }
 
-function initAdminMap() { if(adminMap) return; adminMap = L.map('admin-map').setView([-14,-52],4); L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{maxZoom:20,subdomains:['mt0','mt1','mt2','mt3']}).addTo(adminMap); }
+function initAdminMap() { 
+    if(adminMap) return; 
+    
+    adminMap = L.map('admin-map').setView([-14,-52],4); 
+    
+    L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{
+        maxZoom:20,
+        subdomains:['mt0','mt1','mt2','mt3']
+    }).addTo(adminMap); 
+    
+    // --- LÓGICA DE ZOOM INTELIGENTE ---
+    adminMap.on('zoomend', function() {
+        const zoom = adminMap.getZoom();
+        const mapDiv = document.getElementById('admin-map');
+        
+        // Se o zoom for menor que 13 (muito alto/longe), esconde os textos
+        if (zoom < 16) { // ZOM PRA VER OS NOMES
+            mapDiv.classList.add('hide-labels');
+        } else {
+            mapDiv.classList.remove('hide-labels');
+        }
+    });
+}
+
 function loadClientsForMapFilter() {
     const s = document.getElementById('map-admin-client-select'); if(!s) return; s.innerHTML='<option value="">Selecione...</option>';
     db.collection('users').where('role','==','client').get().then(snap => snap.forEach(d => { let o=document.createElement('option'); o.value=d.id; o.innerText=d.data().nome; s.appendChild(o); }));
 }
+
 function loadAdminFarmsList(uid) {
-    const s = document.getElementById('map-admin-farm-select'); s.innerHTML='<option>Carregando...</option>'; s.disabled=true;
+    const s = document.getElementById('map-admin-farm-select'); 
+    s.innerHTML = '<option>Carregando...</option>'; 
+    s.disabled = true;
+    
+    // Limpa o mapa se mudar de cliente
     if(adminMap) adminMap.eachLayer(l=>{if(!l._url) adminMap.removeLayer(l)});
-    if(!uid) { s.innerHTML='<option>Aguardando...</option>'; return; }
+    
+    if(!uid) { 
+        s.innerHTML = '<option>Aguardando...</option>'; 
+        return; 
+    }
+    
     db.collection('fazendas').where('donoUID','==',uid).get().then(snap => {
-        s.innerHTML='<option>Selecione...</option>'; s.disabled=false;
-        snap.forEach(d => { let o=document.createElement('option'); o.value=d.id; o.innerText=`F${d.data().numero} - ${d.data().nome}`; s.appendChild(o); });
+        s.innerHTML = '<option value="">Selecione a Fazenda...</option>'; 
+        s.disabled = false;
+        
+        // 1. Converte os dados para uma lista (Array) para podermos ordenar
+        let farms = [];
+        snap.forEach(doc => {
+            farms.push({ id: doc.id, ...doc.data() });
+        });
+
+        // 2. Ordena a lista pelo NÚMERO da fazenda (Crescente: 1, 2, 3...)
+        farms.sort((a, b) => a.numero - b.numero);
+
+        // 3. Cria as opções na tela
+        farms.forEach(f => { 
+            let o = document.createElement('option'); 
+            o.value = f.id;
+            
+            // 4. Formatação: Adiciona o ZERO à esquerda (Ex: 1 vira 01, 10 continua 10)
+            const fNum = String(f.numero).padStart(2, '0');
+            
+            o.innerText = `F${fNum} - ${f.nome}`; 
+            s.appendChild(o); 
+        });
     });
 }
+
 function loadAdminMap(fid) {
     if(!fid) return;
+    
+    const farmColors = [
+        '#e74c3c', '#8e44ad', '#3498db', '#1abc9c', '#f1c40f', 
+        '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b',
+        '#9b59b6', '#16a085', '#f39c12', '#27ae60', '#7f8c8d', 
+        '#2c3e50', '#e84393', '#00cec9', '#6c5ce7', '#fdcb6e', 
+        '#d63031', '#0984e3', '#00b894', '#ffeaa7', '#ff7675', 
+        '#a29bfe', '#636e72', '#55efc4', '#fd79a8', '#fab1a0'
+    ];
+
     db.collection('fazendas').doc(fid).get().then(doc => {
-        const f = doc.data(); const b = L.latLngBounds();
-        if(adminMap) adminMap.eachLayer(l=>{if(!l._url) adminMap.removeLayer(l)});
-        f.talhoes.forEach(t => { try {
-            const displayName = t.nomeOriginal || `T${t.numero}`;
-            const p = L.geoJSON(JSON.parse(t.geometry), {style:{color:'#e67e22', weight:2}}).addTo(adminMap);
-            p.bindTooltip(displayName, {direction:'center', permanent:true}); b.extend(p.getBounds());
-        }catch(e){} });
+        const f = doc.data(); 
+        const b = L.latLngBounds();
+        
+        if(adminMap) adminMap.eachLayer(l => { if(!l._url) adminMap.removeLayer(l) });
+        
+        const colorIndex = f.numero ? f.numero : 0;
+        const currentColor = farmColors[colorIndex % farmColors.length];
+
+        f.talhoes.forEach(t => { 
+            try {
+                const geoData = JSON.parse(t.geometry);
+                // AQUI: Usa somente o nome original do KML
+                const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
+                
+                const areaM2 = turf.area(geoData);
+                const areaHa = (areaM2 / 10000).toFixed(2);
+
+                const p = L.geoJSON(geoData, {
+                    style: { color: '#000000', weight: 1, fillColor: currentColor, fillOpacity: 0.8 }
+                }).addTo(adminMap);
+                
+                // --- RÓTULO LIMPO (Nome + Área) ---
+                const center = turf.centerOfMass(geoData);
+                const labelHtml = `
+                    <div>
+                        <span style="font-size:12px">${displayName}</span><br>
+                        <span style="font-size:10px">${areaHa} ha</span>
+                    </div>
+                `;
+                
+                const labelIcon = L.divIcon({ className: 'admin-map-label', html: labelHtml, iconSize: [0,0] });
+                L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon: labelIcon}).addTo(adminMap);
+                
+                // Tooltip continua com informação completa ao passar o mouse
+                p.bindTooltip(`<strong>${displayName}</strong> (${areaHa} ha)`, { direction: 'top' }); 
+                
+                b.extend(p.getBounds());
+            } catch(e){} 
+        });
+        
         if(f.talhoes.length) adminMap.fitBounds(b);
     });
 }
+
 function loadAllFarmsOnMap() {
-    if(!adminMap) initAdminMap(); adminMap.eachLayer(l=>{if(!l._url) adminMap.removeLayer(l)});
-    document.getElementById('map-admin-client-select').value = ""; document.getElementById('map-admin-farm-select').disabled=true;
+    if(!adminMap) initAdminMap(); 
+    
+    adminMap.eachLayer(l => { if(!l._url) adminMap.removeLayer(l) });
+    document.getElementById('map-admin-client-select').value = ""; 
+    document.getElementById('map-admin-farm-select').disabled = true;
+
+    const farmColors = [
+        '#e74c3c', '#8e44ad', '#3498db', '#1abc9c', '#f1c40f', 
+        '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b',
+        '#9b59b6', '#16a085', '#f39c12', '#27ae60', '#7f8c8d', 
+        '#2c3e50', '#e84393', '#00cec9', '#6c5ce7', '#fdcb6e', 
+        '#d63031', '#0984e3', '#00b894', '#ffeaa7', '#ff7675', 
+        '#a29bfe', '#636e72', '#55efc4', '#fd79a8', '#fab1a0'
+    ];
+
     db.collection('fazendas').get().then(snap => {
-        const b = L.latLngBounds(); let c=0;
+        const b = L.latLngBounds(); 
+        let c = 0;
+
         snap.forEach(doc => {
-            doc.data().talhoes.forEach(t => { try{
-                const displayName = t.nomeOriginal || `T${t.numero}`;
-                const p = L.geoJSON(JSON.parse(t.geometry), {style:{color:'#8e44ad', weight:1, fillOpacity:0.3}}).addTo(adminMap);
-                p.bindTooltip(`F${doc.data().numero} - ${displayName}`, {direction:'top'}); b.extend(p.getBounds()); c++;
-            }catch(e){} });
+            const f = doc.data();
+            const colorIndex = f.numero ? f.numero : 0;
+            const currentColor = farmColors[colorIndex % farmColors.length];
+            
+            f.talhoes.forEach(t => { 
+                try {
+                    const geoData = JSON.parse(t.geometry);
+                    // AQUI: Usa somente o nome original do KML
+                    const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
+                    const areaM2 = turf.area(geoData);
+                    const areaHa = (areaM2 / 10000).toFixed(2);
+
+                    const p = L.geoJSON(geoData, {
+                        style: { color: '#000000', weight: 1, fillColor: currentColor, fillOpacity: 0.7 } // --> COR DA BORDA DO MAPA //
+                    }).addTo(adminMap);
+                    
+                    // --- RÓTULO LIMPO ---
+                    const center = turf.centerOfMass(geoData);
+                    const labelHtml = `
+                        <div>
+                            <span style="font-size:11px">${displayName}</span><br>
+                            <span style="font-size:9px">${areaHa} ha</span>
+                        </div>
+                    `;
+                    
+                    const labelIcon = L.divIcon({ className: 'admin-map-label', html: labelHtml, iconSize:[0,0] });
+                    L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon:labelIcon}).addTo(adminMap);
+                    
+                    b.extend(p.getBounds()); 
+                    c++;
+                } catch(e){} 
+            });
         });
-        if(c>0) adminMap.fitBounds(b);
+
+        if(c > 0) adminMap.fitBounds(b);
     });
 }
+
 function viewClientFarms(uid, name) {
     document.getElementById('admin-modal').classList.remove('hidden'); document.getElementById('modal-client-name').innerText = `Fazendas de ${name}`;
     const c = document.getElementById('modal-content'); c.innerHTML='Carregando...';
@@ -929,4 +1105,31 @@ function saveProjectJSON() {
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
+}
+
+
+// Função global para mostrar mensagens bonitas
+function showToast(message, type = 'success') {
+    // 1. Cria o elemento
+    const toast = document.createElement('div');
+    toast.className = `toast-notification ${type}`;
+    
+    // 2. Define ícone baseado no tipo
+    let icon = '<i class="fa-solid fa-check-circle"></i>';
+    if(type === 'error') icon = '<i class="fa-solid fa-triangle-exclamation"></i>';
+    if(type === 'info')  icon = '<i class="fa-solid fa-circle-info"></i>';
+
+    toast.innerHTML = `${icon} <span>${message}</span>`;
+    
+    // 3. Adiciona na tela
+    document.body.appendChild(toast);
+
+    // 4. Animação de entrada (pequeno delay para o CSS processar)
+    setTimeout(() => toast.classList.add('show'), 100);
+
+    // 5. Remove depois de 4 segundos
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 300); // Espera a animação de saída
+    }, 4000);
 }

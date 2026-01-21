@@ -982,3 +982,148 @@ body.dark-mode .status-concluido { background: #064e3b; color: #6ee7b7; border-c
     padding: 15px;
     z-index: 10;
 }
+
+
+/* ================================================================= */
+/* NOVO LAYOUT DO MAPA ADMIN (TELA CHEIA E FILTROS COMPACTOS)        */
+/* ================================================================= */
+
+/* Remove o padding padrão da área de conteúdo APENAS quando estiver na aba mapas */
+/* Isso é feito via JS ou garantindo que o pai tenha altura 100% */
+
+/* Barra de Ferramentas Compacta */
+#map-controls-bar {
+    background: var(--white);
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0; /* Impede de encolher */
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    z-index: 10;
+}
+
+/* Força os selects a ficarem pequenos e na mesma linha */
+#map-controls-bar select {
+    margin-bottom: 0 !important; /* Remove a margem gigante padrão */
+    padding: 8px 12px;
+    width: auto;
+    flex: 1; /* Ocupam o espaço disponível igualmente */
+    max-width: 300px;
+    font-size: 0.9rem;
+    height: 40px;
+}
+
+#map-controls-bar .btn {
+    margin-bottom: 0 !important;
+    height: 40px;
+    padding: 0 20px;
+}
+
+/* Ajuste do Mapa para Tela Cheia */
+#tab-mapas-admin {
+    padding: 0 !important; /* Remove padding da view */
+    overflow: hidden; /* Impede rolagem dupla */
+}
+
+#admin-map {
+    flex: 1; /* Ocupa 100% da altura restante */
+    width: 100%;
+    border: none;
+    border-radius: 0; /* Remove cantos arredondados */
+}
+
+/* ================================================================= */
+/* RÓTULOS DO MAPA DO ADMINISTRADOR (Texto Centralizado)             */
+/* ================================================================= */
+
+.admin-map-label {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.admin-map-label div {
+    /* Centralização Absoluta */
+    transform: translate(-50%, -50%) !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: max-content; /* O container se ajusta ao tamanho do texto */
+    
+    /* Tipografia */
+    color: white;
+    font-weight: bold;
+    font-size: 11px; /* Tamanho bom para leitura */
+    line-height: 0.6; /* Distancia Nome - Hectare */
+    text-align: center;
+    white-space: nowrap;
+    
+    /* Contorno Escuro (Sombra Projetada) para legibilidade máxima */
+    text-shadow: 
+        -1px -1px 0 #000,  
+         1px -1px 0 #000,
+        -1px  1px 0 #000,
+         1px  1px 0 #000;
+         
+    /* Permite clicar no talhão "através" do texto */
+    pointer-events: none; 
+}
+
+/* Esconde rótulos se der muito zoom out (opcional, para não poluir) */
+.map-zoomed-out .admin-map-label {
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* ================================================================= */
+/* CONTROLE DE ZOOM DO ADMIN (Esconde nomes quando está longe)       */
+/* ================================================================= */
+
+/* Quando a div do mapa tiver a classe 'hide-labels', os textos somem */
+.hide-labels .admin-map-label {
+    opacity: 0 !important;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s;
+}
+
+/* Garante que o texto tenha contorno para leitura em qualquer fundo */
+.admin-map-label div {
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+/* ================================================================= */
+/* TOAST NOTIFICATION (Mensagens Flutuantes)                         */
+/* ================================================================= */
+.toast-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #333;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    font-weight: 500;
+    z-index: 10000; /* Acima de tudo, até dos modais */
+    
+    /* Animação de entrada */
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.toast-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+/* Cores por tipo */
+.toast-notification.success { background: #2ecc71; border-left: 5px solid #27ae60; }
+.toast-notification.error   { background: #e74c3c; border-left: 5px solid #c0392b; }
+.toast-notification.info    { background: #3498db; border-left: 5px solid #2980b9; }
