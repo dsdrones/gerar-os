@@ -1,0 +1,984 @@
+/* ================================================================= */
+/* ESTILOS GERAIS E VARIÁVEIS                                     */
+/* ================================================================= */
+:root {
+    /* Paleta de Cores Principal */
+    --primary: #0f172a;       /* Azul Escuro Profundo (Menus) */
+    --primary-light: #1e293b; /* Azul Escuro Suave (Cards Dark) */
+    --accent: #3b82f6;        /* Azul Vibrante (Destaques) */
+    --accent-hover: #2563eb;  /* Azul ao passar o mouse */
+    --success: #10b981;       /* Verde (Sucesso/Salvar) */
+    --danger: #ef4444;        /* Vermelho (Erro/Excluir) */
+    
+    /* Cores de Fundo e Texto (Modo Claro) */
+    --bg-body: #f1f5f9;       /* Fundo da página */
+    --text-main: #334155;     /* Texto principal */
+    --text-light: #64748b;    /* Texto secundário */
+    --border: #e2e8f0;        /* Cor das bordas */
+    --white: #ffffff;         /* Branco padrão */
+    
+    /* Sombra Suave */
+    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Reset básico (tira margens padrão dos navegadores) */
+* { box-sizing: border-box; outline: none; }
+
+/* Configuração da Página (Altura total sem rolagem externa) */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    overflow: hidden; /* Importante para o mapa funcionar */
+}
+
+/* Classe utilitária para esconder elementos */
+.hidden { display: none !important; }
+
+/* ================================================================= */
+/* TELA DE LOGIN                                                  */
+/* ================================================================= */
+#login-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(135deg, var(--primary) 0%, #1e1b4b 100%);
+    z-index: 9999;
+    display: flex; justify-content: center; align-items: center;
+}
+
+.login-box {
+    background: var(--white);
+    padding: 40px;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 20px 25px rgba(0,0,0,0.1);
+}
+
+.brand-logo { font-size: 3rem; color: var(--accent); display: block; margin-bottom: 10px; }
+
+/* ================================================================= */
+/* COMPONENTES (BOTÕES E INPUTS)                                  */
+/* ================================================================= */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    color: white;
+    transition: 0.2s;
+}
+.btn:active { transform: translateY(1px); }
+
+/* Variações de Botões */
+.btn-primary { background-color: var(--primary); }
+.btn-accent { background-color: var(--accent); }
+.btn-success { background-color: var(--success); }
+.btn-danger { background-color: var(--danger); padding: 6px 12px; font-size: 0.8em; }
+
+/* Inputs e Selects Modernos */
+input, select {
+    width: 100%;
+    padding: 12px 16px; /* Mais espaço interno */
+    margin-bottom: 20px;
+    border: 1px solid #cbd5e1; /* Borda cinza suave */
+    border-radius: 8px;
+    background: #f8fafc; /* Fundo levemente cinza */
+    color: var(--text-main);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+/* Efeito de Foco (Quando clica para digitar) */
+input:focus, select:focus {
+    background: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); /* Anel azul suave */
+    outline: none;
+}
+
+/* ================================================================= */
+/* LAYOUT PRINCIPAL (ADMIN E CLIENTE)                             */
+/* ================================================================= */
+#main-wrapper { display: flex; height: 100%; width: 100%; position: relative; }
+
+/* --- BARRA LATERAL (ADMIN) --- */
+.admin-sidebar {
+    width: 280px;
+    background: var(--primary);
+    color: white;
+    display: flex; flex-direction: column;
+    padding: 20px;
+    height: 100%;
+    flex-shrink: 0; /* Impede de encolher */
+}
+
+.admin-menu-item {
+    padding: 12px;
+    cursor: pointer;
+    color: #94a3b8; /* Cinza claro */
+    border-radius: 8px;
+    margin-bottom: 5px;
+    display: flex; align-items: center; gap: 10px;
+}
+.admin-menu-item:hover, .admin-menu-item.active { background: var(--accent); color: white; }
+
+/* ================================================================= */
+/* MELHORIAS VISUAIS DO ADMIN (DASHBOARD PRO)                     */
+/* ================================================================= */
+
+/* Fundo da área de conteúdo levemente mais cinza para destacar os cards */
+.admin-content {
+    /* --- CORREÇÃO DO TAMANHO (IMPORTANTE) --- */
+    flex: 1;          /* Ocupa todo o espaço restante da tela */
+    width: 100%;      /* Força largura total */
+    min-width: 0;     /* Evita bugs de layout em alguns navegadores */
+    height: 100%;     /* Garante altura total */
+    overflow-y: auto; /* Permite rolar a tela se o conteúdo for grande */
+    /* ---------------------------------------- */
+
+    background-color: #f8fafc; 
+    padding: 40px; 
+}
+
+/* Títulos das Seções (H2) */
+.section-header h2 {
+    font-size: 1.5rem;
+    color: var(--primary);
+    margin-bottom: 20px;
+    font-weight: 700;
+    border-left: 5px solid var(--accent); /* Detalhe azul na esquerda */
+    padding-left: 15px;
+}
+
+/* O "Card" Branco (Onde ficam formulários e botões) */
+.form-card {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 12px; /* Cantos mais arredondados */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+                0 2px 4px -1px rgba(0, 0, 0, 0.03); /* Sombra suave */
+    border: 1px solid var(--border);
+    margin-bottom: 30px;
+    transition: transform 0.2s;
+}
+
+.form-card:hover {
+    transform: translateY(-2px); /* Efeito sutil ao passar o mouse */
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+}
+
+/* Títulos dentro dos Cards (H3) */
+.form-card h3 {
+    margin-top: 0;
+    color: var(--text-main);
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+/* --- INTERFACE CLIENTE --- */
+#client-interface { display: flex; width: 100%; height: 100%; position: relative; }
+
+#client-sidebar {
+    width: 380px;
+    height: 100%;
+    background: var(--white);
+    display: flex; flex-direction: column;
+    z-index: 1500;
+    box-shadow: 4px 0 15px rgba(0,0,0,0.05);
+    flex-shrink: 0;
+}
+
+#client-header {
+    padding: 20px;
+    background: var(--primary);
+    color: white;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+}
+
+#farms-list {
+    flex: 1; /* Ocupa espaço do meio */
+    overflow-y: auto; /* Rola se a lista for grande */
+    padding: 15px;
+    background: #f8fafc;
+    height: 0; /* Truque Flexbox para scroll funcionar */
+}
+
+#download-area {
+    padding: 20px;
+    background: var(--white);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+/* Onde o Mapa do Leaflet é desenhado */
+#map, #admin-map { flex: 1; height: 100%; width: 100%; z-index: 1; background: #e5e5e5; }
+
+/* Estilo dos itens da lista de fazendas */
+.farm-group { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; background: var(--white); }
+.farm-title { padding: 10px; background: #f1f5f9; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid var(--border); }
+.plot-item { padding: 8px 10px; display: flex; align-items: center; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+.plot-item:hover { background: #f8fafc; }
+.plot-item.active { background: #eff6ff; border-left: 3px solid var(--accent); }
+.plot-item input { width: 18px; height: 18px; margin: 0 10px 0 0; }
+
+.logout-btn-small { background: rgba(255,255,255,0.1); border: none; color: white; padding: 6px; border-radius: 4px; cursor: pointer; }
+
+/* --- TABS E MODAIS --- */
+#tab-mapas-admin.hidden { display: none !important; }
+#tab-mapas-admin:not(.hidden) { display: flex !important; flex-direction: column; height: 100%; }
+
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; display: flex; justify-content: center; align-items: center; }
+.modal-box { background: var(--white); width: 90%; max-width: 500px; max-height: 80vh; border-radius: 12px; display: flex; flex-direction: column; }
+.modal-header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+#modal-content { padding: 20px; overflow-y: auto; }
+.admin-farm-item { display: flex; justify-content: space-between; padding: 10px; border: 1px solid var(--border); margin-bottom: 5px; border-radius: 6px; }
+
+/* --- RESPONSIVIDADE (MOBILE) --- */
+#mobile-menu-btn { display: none; position: absolute; top: 15px; left: 15px; z-index: 2000; padding: 10px; background: white; border: none; border-radius: 8px; box-shadow: var(--shadow); }
+
+@media screen and (max-width: 768px) {
+    .admin-sidebar { width: 60px; padding: 10px; }
+    .admin-sidebar span, .admin-brand span { display: none; }
+    #mobile-menu-btn { display: block; }
+    
+    #client-sidebar { position: fixed; left: 0; top: 0; height: 100%; width: 85%; max-width: 320px; transform: translateX(-100%); transition: 0.3s; }
+    #client-sidebar.open { transform: translateX(0); }
+    #sidebar-overlay-mobile { display: none; position: fixed; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1400; }
+    #sidebar-overlay-mobile.show { display: block; }
+}
+
+/* ================================================================= */
+/* EDITOR DE OS (AQUI FICA A VISUALIZAÇÃO DE MAPA E PDF)          */
+/* ================================================================= */
+#os-editor-overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #e5e5e5;
+    z-index: 5000;
+    display: flex; 
+    flex-direction: row; /* MUDANÇA: Coloca lado a lado (antes era column) */
+}
+
+/* Painel de Configurações FIXO NA LATERAL */
+#config-panel {
+    position: relative; /* MUDANÇA: Deixa de ser absolute */
+    /* top e left removidos pois não são mais necessários */
+    background: #ffffff;
+    color: #333;
+    padding: 15px;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1); /* Sombra para a direita */
+    z-index: 6000;
+    height: 100%; /* MUDANÇA: Ocupa a altura toda */
+    overflow-y: auto;
+    width: 260px; /* Largura fixa inicial */
+    border-right: 1px solid #ccc;
+    border-radius: 0; /* Remove bordas arredondadas para parecer sidebar */
+    flex-shrink: 0; /* Impede o painel de esmagar */
+}
+
+/* Adicione no final do style.css */
+@media screen and (max-width: 768px) {
+    #os-editor-overlay { flex-direction: column; }
+    #config-panel {
+        position: absolute; /* Volta a flutuar no mobile */
+        height: auto;
+        width: 90%;
+        max-height: 60vh;
+        border-radius: 8px;
+    }
+}
+
+.config-group { margin-bottom: 10px; font-size: 0.9em; }
+.config-group label { display: block; font-weight: bold; margin-bottom: 4px; color: #444; }
+#config-panel input, #config-panel select { margin: 0; padding: 6px; font-size: 1em; width: 100%; background: #f9f9f9; border: 1px solid #bbb; color: #000; border-radius: 4px; }
+.separator { height: 1px; background: #ddd; margin: 12px 0; }
+
+/* Área do Mapa da OS */
+#os-map-area { flex: 1; position: relative; width: 100%; height: 100%; }
+#os-map { width: 100%; height: 100%; background: #e5e5e5; }
+
+/* --- ELEMENTOS FLUTUANTES DA OS (TITULO, LOGO, ETC) --- */
+#os-map-title {
+    position: absolute; 
+    top: 30px; 
+    
+    /* MÉTODO DE CENTRALIZAÇÃO BLINDADA */
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto; /* Deixa o tamanho se ajustar ao texto */
+    
+    /* Configurações visuais */
+    z-index: 2000; /* Aumentei o z-index para garantir que fique sempre por cima */
+    font-size: 60px; 
+    font-weight: 900;
+    text-transform: uppercase; 
+    pointer-events: none;
+    
+    text-shadow: -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff, 2px 2px 0 #fff;
+    color: #000; 
+    white-space: nowrap; /* Impede que o texto quebre linha */
+    text-align: center;
+}
+
+/* ================================================================= */
+/* CORREÇÃO DOS RÓTULOS (LABELS) DOS TALHÕES                      */
+/* ================================================================= */
+
+/* Remove qualquer margem padrão do ícone do Leaflet */
+.leaflet-div-icon.os-label {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Centralização absoluta do texto do talhão */
+.os-label div {
+    /* Move o texto 50% para a esquerda e 50% para cima */
+    /* Isso garante que o MEIO do texto fique na coordenada exata */
+    transform: translate(-50%, -50%) !important;
+    
+    /* Garante que o texto não quebre e fique alinhado */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: max-content; /* O container abraça o tamanho do texto */
+}
+
+#os-map-logo {
+    position: absolute; bottom: 40px; right: 40px;
+    z-index: 1000; max-width: 300px; max-height: 150px;
+    pointer-events: none;
+    filter: drop-shadow(0 0 10px rgba(255,255,255,0.8));
+}
+
+#os-north-arrow {
+    position: absolute; top: 40px; left: 40px;
+    width: 150px; height: 150px;
+    z-index: 1000; pointer-events: none;
+    filter: drop-shadow(0 0 5px white);
+}
+
+#os-map-legend {
+    position: absolute; bottom: 40px; left: 40px;
+    z-index: 999; pointer-events: none;
+}
+#os-map-legend h4 { margin: 0 0 5px 0; font-size: 14px; text-shadow: 1px 1px 0 #fff; color: #000; text-transform: uppercase; }
+
+.legend-item { display: flex; align-items: center; margin-bottom: 2px; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #fff; color: #000; }
+.legend-color-box { width: 15px; height: 15px; margin-right: 5px; border: 1px solid #fff; }
+
+.legend-total { 
+    margin-top: 8px; padding-top: 5px; border-top: 2px solid #000; 
+    font-weight: 900; text-transform: uppercase; font-size: 14px; 
+    color: #000; text-shadow: 1px 1px 0 #fff; 
+}
+
+#os-scale-container {
+    position: absolute; bottom: 30px; left: 50%;
+    transform: translateX(-50%); z-index: 1000; pointer-events: none;
+}
+.leaflet-control-scale-line { border: 2px solid #333; font-weight: bold; background: rgba(255,255,255,0.8); color: #000; }
+
+/* --- VISUALIZAÇÃO A0 (PREVIEW) --- */
+body.preview-active #os-editor-overlay {
+    background: #333; /* Fundo escuro */
+    display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start;
+}
+
+/* Menu vira barra lateral */
+body.preview-active #config-panel {
+    position: relative; left: 0; top: 0;
+    width: 320px; height: 100vh; overflow-y: auto;
+    border-radius: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    background: #fff; flex-shrink: 0;
+}
+
+/* Folha A0 simulada */
+body.preview-active #os-map-area {
+    width: 4500px !important; height: 3182px !important;
+    position: absolute; border: 50px solid white; background: white;
+    top: 50%; left: calc(50% + 160px);
+    transform: translate(-50%, -50%) scale(0.2);
+    box-shadow: 0 0 100px rgba(0,0,0,0.5);
+}
+
+/* Ajustes de tamanho no Preview */
+body.preview-active #os-map-title { font-size: 100px; top: 50px; }
+body.preview-active #os-north-arrow { width: 350px; height: 350px; top: 80px; left: 80px; }
+body.preview-active #os-map-legend { bottom: 80px; left: 80px; transform: scale(2.5); transform-origin: bottom left; }
+body.preview-active #os-map-logo { bottom: 80px; right: 80px; max-width: 500px; }
+body.preview-active #os-scale-container { bottom: 80px; transform: translateX(-50%) scale(3.5); transform-origin: bottom center; }
+
+
+/* ================================================================= */
+/* CONFIGURAÇÃO DE IMPRESSÃO (SEM FUNDO NA LEGENDA)                */
+/* ================================================================= */
+@media print {
+    @page { 
+        size: portrait;
+        margin: 10mm; 
+    }
+
+    body, html {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: white !important;
+        overflow: visible !important;
+        -webkit-print-color-adjust: exact !important; 
+        print-color-adjust: exact !important;
+    }
+
+    /* Esconde a interface do sistema */
+    #admin-interface, #client-interface, #login-overlay, #config-panel, 
+    .admin-sidebar, .modal-overlay, #mobile-menu-btn { 
+        display: none !important; 
+    }
+
+    /* Força o Overlay do Editor a aparecer */
+    #os-editor-overlay { 
+        display: block !important;
+        position: fixed !important;
+        top: 0; left: 0;
+        width: 100vw !important;
+        height: 100vh !important;
+        background: white !important;
+        z-index: 99999;
+    }
+
+    /* O Mapa ocupa 100% da folha */
+    #os-map-area { 
+        position: absolute !important;
+        top: 0 !important; left: 0 !important;
+        width: 100% !important; height: 100% !important;
+        margin: 0 !important; border: none !important; 
+        box-shadow: none !important;
+        transform: none !important; /* Remove zoom da tela */
+    }
+
+    /* --- AJUSTES DE TAMANHO PARA IMPRESSÃO --- */
+
+    /* 1. Título */
+    #os-map-title {
+        font-size: 60pt !important;
+        top: 40px !important;
+        width: 100% !important;
+        text-align: center;
+        text-shadow: none !important;
+        color: #000 !important;
+    }
+
+    /* 2. Logo */
+    #os-map-logo {
+        width: 500px !important;
+        max-width: none !important;
+        max-height: none !important;
+        bottom: 60px !important;
+        right: 60px !important;
+    }
+
+    /* 3. Rosa dos Ventos */
+    #os-north-arrow {
+        width: 350px !important;
+        height: 350px !important;
+        top: 90px !important;
+        left: 60px !important;
+        transform: none !important;
+    }
+
+    /* 4. Legenda (TRANSPARENTE AGORA) */
+    #os-map-legend {
+        transform: scale(2.5) !important;
+        transform-origin: bottom left;
+        bottom: 60px !important;
+        left: 60px !important;
+        
+        /* REMOVIDO O BACKGROUND E PADDING */
+        background: none !important; 
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+    }
+
+    /* 5. Escala */
+    #os-scale-container {
+        bottom: 50px !important;
+        left: 50% !important;
+        transform: translateX(-50%) scale(3.0) !important;
+    }
+    
+    .leaflet-control-scale-line {
+        border-color: #000 !important;
+        color: #000 !important;
+        background: rgba(255,255,255,0.7) !important;
+    }
+}
+
+/* Remove as margens padrão do Leaflet para centralizar perfeitamente */
+#os-scale-container .leaflet-control-scale {
+    margin: 0 !important;
+}
+
+/* Garante que o texto dentro da escala fique legível */
+#os-scale-container .leaflet-control-scale-line {
+    background: rgba(255, 255, 255, 0.8); /* Fundo semi-transparente */
+    border: 2px solid #333;
+    text-align: center;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+
+/* ================================================================= */
+/* TABELAS MODERNAS (ADMIN)                                       */
+/* ================================================================= */
+
+.table-container {
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
+    overflow: hidden; /* Garante que os cantos arredondados funcionem */
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse; /* Remove espaços entre células */
+    font-size: 0.95rem;
+}
+
+/* Cabeçalho da Tabela */
+table thead {
+    background-color: #f1f5f9; /* Cinza claro no topo */
+    border-bottom: 2px solid var(--border);
+}
+
+table th {
+    text-align: left;
+    padding: 16px;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+/* Corpo da Tabela */
+table td {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-main);
+    vertical-align: middle;
+}
+
+/* Linha Zebrada e Hover */
+table tbody tr:last-child td { border-bottom: none; }
+table tbody tr:hover {
+    background-color: #f8fafc; /* Destaque ao passar o mouse */
+}
+
+/* Ajuste nos botões dentro da tabela para ficarem alinhados */
+table td .btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    margin-right: 5px;
+}
+
+/* ================================================================= */
+/* DARK MODE (CONFIGURAÇÃO COMPLETA)                               */
+/* ================================================================= */
+
+/* 1. Troca as Variáveis Principais (O SEGREDO ESTÁ AQUI) */
+body.dark-mode { 
+    --bg-body: #0f172a; 
+    --text-main: #f1f5f9; /* Texto vira branco */
+    --text-light: #94a3b8; /* Texto secundário vira cinza claro */
+    --white: #1e293b;      /* Branco vira azul escuro (cards) */
+    --border: #334155;     /* Bordas ficam mais escuras */
+}
+
+/* 2. Ajustes Gerais do Sistema Antigo (Mantidos) */
+body.dark-mode #map, 
+body.dark-mode #admin-map { 
+    filter: brightness(0.85); /* Mapa um pouco mais escuro para não ofuscar */
+}
+
+body.dark-mode #download-area, 
+body.dark-mode .farm-group { 
+    background-color: #1e293b; 
+    border-color: #334155; 
+}
+
+body.dark-mode #farms-list { 
+    background-color: #0f172a; 
+}
+
+body.dark-mode .farm-title { 
+    background-color: #334155; 
+    color: #fff; 
+    border-color: #475569; 
+}
+
+body.dark-mode .plot-item:hover { 
+    background-color: #334155; 
+}
+
+/* 3. Ajustes do Editor de OS (Barra Lateral) */
+body.dark-mode #config-panel { 
+    background-color: #1e293b; 
+    color: #fff; 
+    border-color: #475569; 
+}
+body.dark-mode #config-panel label { color: #ccc; }
+body.dark-mode #config-panel input { 
+    background-color: #0f172a; 
+    color: #fff; 
+    border-color: #475569; 
+}
+
+/* 4. OVERRIDES DO NOVO DESIGN DO ADMIN (Para ficar bonito no escuro) */
+body.dark-mode .admin-content { 
+    background-color: #0f172a; /* Fundo geral escuro */
+} 
+
+body.dark-mode .section-header h2 { 
+    color: #f1f5f9; 
+}
+
+/* Cards e Tabelas no Modo Escuro */
+body.dark-mode .table-container,
+body.dark-mode .form-card,
+body.dark-mode .modal-box {
+    background-color: #1e293b; 
+    border-color: #334155;
+    color: #f1f5f9;
+    box-shadow: none;
+}
+
+/* Tabelas */
+body.dark-mode table thead { background-color: #0f172a; } 
+body.dark-mode table th { color: #94a3b8; }
+body.dark-mode table tbody tr:hover { background-color: #334155; }
+body.dark-mode table td { color: #f1f5f9; border-color: #334155; }
+
+/* Inputs e Selects Globais */
+body.dark-mode input, 
+body.dark-mode select {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #fff;
+}
+body.dark-mode input:focus,
+body.dark-mode select:focus { 
+    border-color: var(--accent); 
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+
+/* ================================================================= */
+/* LISTA DE FAZENDAS EXPANSIVA (ACORDEÃO MOBILE)                  */
+/* ================================================================= */
+
+/* Removemos a borda padrão e deixamos mais limpo */
+.farm-group {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: var(--white);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+/* Cabeçalho da Fazenda (Onde clica) */
+.farm-header {
+    padding: 15px;
+    background: #f8fafc; /* Cor de fundo suave */
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between; /* Texto na esquerda, seta na direita */
+    align-items: center;
+    font-weight: 600;
+    color: var(--primary);
+    border-bottom: 1px solid transparent; /* Sem borda quando fechado */
+    transition: background 0.2s;
+}
+
+.farm-header:active {
+    background: #e2e8f0; /* Feedback visual ao tocar no celular */
+}
+
+/* Container dos Talhões (Escondido por padrão) */
+.farm-content {
+    display: none; /* O SEGREDO: Começa escondido */
+    background: var(--white);
+    border-top: 1px solid var(--border);
+}
+
+/* Quando a fazenda está ABERTA */
+.farm-group.open .farm-content {
+    display: block; /* Aparece! */
+    animation: slideDown 0.3s ease-out;
+}
+
+.farm-group.open .farm-header {
+    background: var(--accent); /* Fica azul quando aberto */
+    color: white; /* Texto branco */
+}
+
+/* A setinha (ícone) */
+.farm-arrow {
+    transition: transform 0.3s ease;
+}
+
+/* Gira a setinha quando aberto */
+.farm-group.open .farm-arrow {
+    transform: rotate(180deg);
+}
+
+/* Animação suave de abertura */
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Ajuste nos itens (talhões) para facilitar o toque */
+.plot-item {
+    padding: 12px 15px; /* Mais espaço para o dedo */
+    font-size: 0.95rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+
+/* ================================================================= */
+/* RÓTULOS DO MAPA DO CLIENTE (NOME + HECTARES)                   */
+/* ================================================================= */
+
+.client-plot-label {
+    background: transparent !important; /* Remove o fundo branco */
+    border: none !important;            /* Remove a borda */
+    box-shadow: none !important;        /* Remove a sombra */
+    
+    /* Texto Branco com Contorno Preto (Legibilidade máxima) */
+    color: #ffffff !important;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+    
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+/* Remove a setinha/triângulo padrão do tooltip */
+.client-plot-label::before {
+    display: none;
+}
+
+
+/* ================================================================= */
+/* CONTROLE DE VISIBILIDADE DOS RÓTULOS (ZOOM)                    */
+/* ================================================================= */
+
+/* Quando a classe .hide-labels é adicionada ao mapa (via JS), os textos somem */
+.hide-labels .client-plot-label {
+    opacity: 0 !important;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s; /* Animação suave */
+}
+
+
+/* ================================================================= */
+/* BOTÃO FLUTUANTE DE OS (MOBILE)                                 */
+/* ================================================================= */
+
+#fab-os-mobile {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    /* Truque: Começa deslocado para baixo (escondido) */
+    transform: translateX(-50%) translateY(150px); 
+    
+    background: var(--success); /* Verde (Ação) */
+    color: white;
+    padding: 14px 28px;
+    border-radius: 50px; /* Borda redonda (Pílula) */
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    border: none;
+    z-index: 4000; /* Acima do mapa */
+    
+    font-weight: bold;
+    font-size: 1rem;
+    display: flex; align-items: center; gap: 10px;
+    
+    /* Animação elástica suave */
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+    pointer-events: none; /* Não clica quando escondido */
+}
+
+/* Quando ganha a classe .visible (via JS), ele sobe e aparece */
+#fab-os-mobile.visible {
+    transform: translateX(-50%) translateY(0);
+    pointer-events: all;
+}
+
+/* Garante que NUNCA apareça no computador */
+@media screen and (min-width: 769px) {
+    #fab-os-mobile { display: none !important; }
+}
+
+
+/* ================================================================= */
+/* HISTÓRICO DE PEDIDOS (CLIENTE)                                 */
+/* ================================================================= */
+
+/* Item da lista de histórico */
+.history-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--white);
+    transition: background 0.2s;
+}
+
+.history-item:last-child { border-bottom: none; }
+.history-item:hover { background: #f8fafc; }
+
+/* Texto das datas e info */
+.history-info strong { display: block; color: var(--text-main); font-size: 0.95rem; }
+.history-info small { color: var(--text-light); font-size: 0.85rem; }
+
+/* Etiquetas de Status (Badges) */
+.status-badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* Cores dos Status */
+.status-pendente { background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }   /* Laranja */
+.status-analise  { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }   /* Azul */
+.status-concluido{ background-color: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }   /* Verde */
+.status-cancelado{ background-color: #fef2f2; color: #b91c1c; border: 1px solid #fee2e2; }   /* Vermelho */
+
+/* Ajuste Dark Mode para o Histórico */
+body.dark-mode .history-item { background-color: #1e293b; border-color: #334155; }
+body.dark-mode .history-item:hover { background-color: #0f172a; }
+body.dark-mode .status-pendente { background: #431407; color: #fdba74; border-color: #7c2d12; }
+body.dark-mode .status-concluido { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+
+
+/* ================================================================= */
+/* ESTILOS DO RELATÓRIO E DETALHES (CLIENTE)                      */
+/* ================================================================= */
+
+.report-content {
+    padding: 30px;
+    background: white;
+    /* CORREÇÃO AQUI: Força texto escuro mesmo no Dark Mode */
+    color: #1e293b !important; 
+}
+
+/* Garante que todos os elementos internos tenham cor escura */
+.report-content h2, 
+.report-content h3, 
+.report-content h4, 
+.report-content p, 
+.report-content span, 
+.report-content strong,
+.report-content td {
+    color: #1e293b !important;
+}
+
+.report-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 20px;
+}
+
+.report-logo h2 { margin: 0; display: inline-block; vertical-align: middle; margin-left: 10px; }
+.report-meta p { margin: 2px 0; text-align: right; font-size: 0.9em; }
+
+.report-info-box {
+    background: #f8fafc;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+.report-info-box p { margin: 5px 0; font-size: 1rem; }
+.highlight-type { font-weight: bold; color: var(--accent) !important; text-transform: uppercase; }
+
+/* Tabela do Relatório */
+.report-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.report-table th { 
+    background: #e2e8f0; 
+    color: #334155 !important; /* Força cor do cabeçalho */
+    text-align: left; 
+    padding: 10px; 
+    font-size: 0.9em; 
+    border-bottom: 2px solid #cbd5e1; 
+}
+.report-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.95em; }
+.report-footer { margin-top: 40px; text-align: center; font-size: 0.8em; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+
+/* --- MODO DE IMPRESSÃO (A MÁGICA) --- */
+@media print {
+    body * { visibility: hidden; }
+    
+    #order-details-modal, #printable-order-content, #printable-order-content * {
+        visibility: visible;
+        color: #000 !important; /* Garante preto puro na impressão */
+    }
+
+    #order-details-modal {
+        position: absolute; left: 0; top: 0; width: 100%; height: auto;
+        background: white; z-index: 9999; display: block !important;
+    }
+    
+    .modal-box { box-shadow: none; border: none; width: 100%; max-width: 100%; padding: 0; }
+    .no-print { display: none !important; }
+    
+    .report-content { padding: 0; }
+    .report-table th { background-color: #f1f5f9 !important; -webkit-print-color-adjust: exact; }
+}
+
+
+/* --- CORREÇÃO DO MODAL DE DETALHES (Scroll Interno) --- */
+
+/* Força a caixa do modal a usar todo o espaço vertical disponível */
+#order-details-modal .modal-box {
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh; /* Altura máxima de 85% da tela */
+    overflow: hidden; /* Remove scroll da caixa principal */
+}
+
+/* O Miolo (Relatório) deve crescer e ter scroll próprio */
+#printable-order-content {
+    flex: 1;           /* Ocupa todo o espaço sobrando */
+    overflow-y: auto;  /* Scroll aparece SÓ aqui se precisar */
+    padding: 20px;     /* Espaçamento interno */
+    min-height: 0;     /* Correção para bugs de flexbox */
+}
+
+/* O Rodapé (Onde fica o botão) fica fixo no fundo */
+.modal-footer {
+    flex-shrink: 0;    /* Impede que o rodapé seja esmagado */
+    background: #fff;  /* Fundo branco para não misturar */
+    border-top: 1px solid #eee;
+    padding: 15px;
+    z-index: 10;
+}
