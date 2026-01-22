@@ -1127,3 +1127,47 @@ body.dark-mode .status-concluido { background: #064e3b; color: #6ee7b7; border-c
 .toast-notification.success { background: #2ecc71; border-left: 5px solid #27ae60; }
 .toast-notification.error   { background: #e74c3c; border-left: 5px solid #c0392b; }
 .toast-notification.info    { background: #3498db; border-left: 5px solid #2980b9; }
+
+/* ================================================================= */
+/* BARRA DE PESQUISA DO CLIENTE                                      */
+/* ================================================================= */
+
+.search-box-wrapper {
+    position: sticky; /* Cola no topo */
+    top: 0;
+    z-index: 10;
+    background: #f8f9fa; /* Mesma cor do fundo do menu */
+    padding: 10px 15px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+}
+
+/* Se estiver em modo escuro, ajusta o fundo */
+body.dark-mode .search-box-wrapper {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+.search-box-wrapper input {
+    width: 100%;
+    padding: 10px 10px 10px 35px; /* Espaço para o ícone */
+    border: 1px solid #ccc;
+    border-radius: 20px; /* Redondinho */
+    outline: none;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.search-box-wrapper input:focus {
+    border-color: #2ecc71; /* Verde ao clicar */
+    box-shadow: 0 0 5px rgba(46, 204, 113, 0.3);
+}
+
+.search-icon {
+    position: absolute;
+    left: 25px;
+    color: #888;
+    font-size: 14px;
+    pointer-events: none; /* Deixa clicar "através" do ícone */
+}

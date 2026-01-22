@@ -71,7 +71,10 @@ function initMap() {
     if(map) return;
     
     // Configuração Inicial do Mapa
-    map = L.map('map', {zoomControl: false}).setView([-14.2350, -51.9253], 4);
+    map = L.map('map', {
+        zoomControl: false,
+        preferCanvas: true // <--- AQUI ESTÁ O MODO TURBO ATIVADO
+    }).setView([-14.2350, -51.9253], 4);
     
     L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{
         maxZoom: 20, 
@@ -85,11 +88,10 @@ function initMap() {
         const currentZoom = map.getZoom();
         const mapElement = document.getElementById('map');
         
-        // Se o zoom for MENOR que 14 (muito longe/alto), esconde os nomes
-        if (currentZoom < 14) {
+        // Mantive o seu ajuste de 16
+        if (currentZoom < 16) {
             mapElement.classList.add('hide-labels');
         } else {
-            // Se estiver perto (14 ou mais), mostra os nomes
             mapElement.classList.remove('hide-labels');
         }
     }
@@ -114,16 +116,18 @@ function loadClientFarms(uid) {
         
         const bounds = L.latLngBounds();
         let hasLayers = false;
+
+        // --- OTIMIZAÇÃO 1: CRIAR FRAGMENTO NA MEMÓRIA ---
+        // Em vez de colocar na tela item por item, colocamos nessa "caixa virtual"
+        const fragment = document.createDocumentFragment(); 
         
         snap.forEach(doc => {
             const f = doc.data();
             const fNum = String(f.numero).padStart(2,'0');
             
-            // 1. Cria o Grupo da Fazenda
             const groupDiv = document.createElement('div');
-            groupDiv.className = 'farm-group'; // Classe principal
+            groupDiv.className = 'farm-group'; 
 
-            // 2. Cria o Cabeçalho (Onde o usuário clica)
             const headerDiv = document.createElement('div');
             headerDiv.className = 'farm-header';
             headerDiv.innerHTML = `
@@ -131,61 +135,51 @@ function loadClientFarms(uid) {
                 <i class="fa-solid fa-chevron-down farm-arrow"></i>
             `;
 
-            // 3. Cria o Container de Conteúdo (Oculto por CSS)
             const contentDiv = document.createElement('div');
             contentDiv.className = 'farm-content';
 
-            // EVENTO DE CLIQUE PARA ABRIR/FECHAR
             headerDiv.addEventListener('click', () => {
-                // Fecha outras fazendas se quiser (opcional, deixei comentado)
-                // document.querySelectorAll('.farm-group').forEach(g => { if(g !== groupDiv) g.classList.remove('open') });
-                
                 groupDiv.classList.toggle('open');
             });
 
             const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
 
             sortedTalhoes.forEach(t => {
-    try {
-        let geoData = (typeof t.geometry === 'string') ? JSON.parse(t.geometry) : t.geometry;
-        const displayName = t.nomeOriginal && t.nomeOriginal.length > 0 ? t.nomeOriginal : `Talhão ${t.numero}`;
-        
-        // --- CORREÇÃO: O CÁLCULO VEM PRIMEIRO ---
-        // 1. Calcula a área em Hectares AGORA (antes de usar no HTML)
-        const areaM2 = turf.area(geoData);
-        const areaHa = (areaM2 / 10000).toFixed(2); 
-        // ----------------------------------------
+                try {
+                    let geoData = (typeof t.geometry === 'string') ? JSON.parse(t.geometry) : t.geometry;
+                    const displayName = t.nomeOriginal && t.nomeOriginal.length > 0 ? t.nomeOriginal : `Talhão ${t.numero}`;
+                    
+                    const areaM2 = turf.area(geoData);
+                    const areaHa = (areaM2 / 10000).toFixed(2); 
 
-        const row = document.createElement('div');
-        row.className = 'plot-item';
-        
-        // Agora podemos usar ${areaHa} porque ela já foi criada nas linhas acima
-        row.innerHTML = `<input type="checkbox" class="chk-export" 
-            data-farm-id="${doc.id}" 
-            data-farm-name="${f.nome}"
-            data-farm-num="${f.numero}"
-            data-plot-name="${displayName}"
-            data-plot-area="${areaHa}"> <span>${displayName}</span>`;
-        
-        // --- MAPA: CRIAÇÃO DO POLÍGONO E RÓTULO ---
-        
-        // 2. Adiciona ao mapa
-        const poly = L.geoJSON(geoData, {style: {color:'#ffffff', weight:2, fillOpacity:0.1}}).addTo(map);
-        
-        // Restante do código continua igual...
-        poly.bindTooltip(`${displayName}<br><span style="font-size:0.9em">${areaHa} ha</span>`, {
-            permanent: true, 
-            direction: 'center', 
-            className: 'client-plot-label' 
-        });
-        
-        
-
+                    const row = document.createElement('div');
+                    row.className = 'plot-item';
+                    
+                    row.innerHTML = `<input type="checkbox" class="chk-export" 
+                        data-farm-id="${doc.id}" 
+                        data-farm-name="${f.nome}"
+                        data-farm-num="${f.numero}"
+                        data-plot-name="${displayName}"
+                        data-plot-area="${areaHa}"> <span>${displayName}</span>`;
+                    
+                    // --- OTIMIZAÇÃO 2: SmoothFactor ---
+                    const poly = L.geoJSON(geoData, {
+                        smoothFactor: 1.5, // Deixa o desenho mais leve
+                        style: {color:'#ffffff', weight:2, fillOpacity:0.1}
+                    }).addTo(map);
+                    
+                    poly.bindTooltip(`${displayName}<br><span style="font-size:0.9em">${areaHa} ha</span>`, {
+                        permanent: true, 
+                        direction: 'center', 
+                        className: 'client-plot-label' 
+                    });
+                    
                     bounds.extend(poly.getBounds());
                     hasLayers = true;
-                    // -------------------------------------------
                     
+                    // Lógica de interação (Checkbox e clique)
                     const checkbox = row.querySelector('input');
+                    
                     checkbox.addEventListener('change', e => {
                         if(e.target.checked) {
                             poly.setStyle({color: '#ffcc00', weight: 3, fillOpacity: 0.6});
@@ -195,24 +189,17 @@ function loadClientFarms(uid) {
                             row.classList.remove('active');
                         }
                         
-						// --- LÓGICA DO BOTÃO FLUTUANTE MOBILE ---
+                        // Atualiza botão flutuante
                         const totalSelected = document.querySelectorAll('.chk-export:checked').length;
                         const fab = document.getElementById('fab-os-mobile');
                         const fabCount = document.getElementById('fab-count');
 
                         if(fab && fabCount) {
-                            fabCount.innerText = totalSelected; // Atualiza o contador (1, 2, 3...)
-                            
-                            // Se tiver pelo menos 1 selecionado E for mobile (opcional), mostra o botão
-                            if(totalSelected > 0) {
-                                fab.classList.add('visible');
-                            } else {
-                                fab.classList.remove('visible');
-                            }
+                            fabCount.innerText = totalSelected;
+                            if(totalSelected > 0) fab.classList.add('visible');
+                            else fab.classList.remove('visible');
                         }
-					
-					
-					});
+                    });
 
                     row.addEventListener('click', (e) => {
                         if(e.target.type !== 'checkbox') {
@@ -232,11 +219,16 @@ function loadClientFarms(uid) {
                 } catch(e){ console.warn("Erro ao ler talhão:", e); }
             });
 
-            // Monta a estrutura final
             groupDiv.appendChild(headerDiv);
             groupDiv.appendChild(contentDiv);
-            list.appendChild(groupDiv);
+            
+            // --- AQUI ESTÁ A DIFERENÇA: Adiciona ao Fragmento, não à tela ---
+            fragment.appendChild(groupDiv);
         });
+        
+        // --- COLAGEM ÚNICA (Muito mais rápido) ---
+        // Só agora jogamos tudo na tela de uma vez só
+        list.appendChild(fragment);
         
         if(hasLayers) setTimeout(() => { map.fitBounds(bounds); }, 500);
     });
@@ -1132,4 +1124,49 @@ function showToast(message, type = 'success') {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 300); // Espera a animação de saída
     }, 4000);
+}
+
+
+// Função de Pesquisa do Cliente
+function filterClientList() {
+    const term = document.getElementById('client-search-input').value.toLowerCase();
+    const groups = document.querySelectorAll('.farm-group');
+
+    groups.forEach(group => {
+        // Pega o nome da Fazenda (F01 - Nome)
+        const farmName = group.querySelector('.farm-header span').innerText.toLowerCase();
+        
+        // Pega todos os talhões dessa fazenda
+        const items = group.querySelectorAll('.plot-item');
+        let hasMatchInPlots = false;
+
+        // 1. Verifica se a FAZENDA combina com a pesquisa
+        if (farmName.includes(term)) {
+            group.style.display = "block"; // Mostra o grupo
+            items.forEach(item => item.style.display = "flex"); // Mostra todos os itens
+            // Se a pesquisa estiver vazia, fecha o acordeão (opcional)
+            if(term === "") group.classList.remove('open');
+            return; // Sai daqui, já achou a fazenda inteira
+        }
+
+        // 2. Se a fazenda não combinou, verifica os TALHÕES um por um
+        items.forEach(item => {
+            const plotName = item.querySelector('span').innerText.toLowerCase();
+            
+            if (plotName.includes(term)) {
+                item.style.display = "flex"; // Mostra esse talhão
+                hasMatchInPlots = true;
+            } else {
+                item.style.display = "none"; // Esconde os outros
+            }
+        });
+
+        // 3. Decide se mostra ou esconde o GRUPO da Fazenda
+        if (hasMatchInPlots) {
+            group.style.display = "block";
+            group.classList.add('open'); // ABRE A FAZENDA AUTOMATICAMENTE
+        } else {
+            group.style.display = "none"; // Esconde a fazenda inteira se nada combinar
+        }
+    });
 }

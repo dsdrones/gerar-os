@@ -134,22 +134,28 @@
             <button id="mobile-menu-btn" onclick="toggleMobileSidebar()"><i class="fa-solid fa-bars"></i></button>
             <div id="sidebar-overlay-mobile" onclick="toggleMobileSidebar()"></div>
             <div id="client-sidebar">
-                <div id="client-header">
-                    <span id="client-name-display">Cliente</span>
-                    <div>
-                        <button class="logout-btn-small" onclick="toggleTheme()"><i class="fa-solid fa-moon"></i></button>
-                        <button class="logout-btn-small" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i></button>
-                    </div>
-                </div>
-                <div id="farms-list"></div>
-                <div id="download-area">
-                    <button class="btn btn-accent" style="width:100%" onclick="requestOS()">Gerar Solicitação (OS)</button>
-                    
-                    <button class="btn" style="width:100%; margin-top:10px; background-color:var(--text-light); color:white;" onclick="openClientHistory()">
-                        <i class="fa-solid fa-clock-rotate-left"></i> Meus Pedidos
-                    </button>
-                </div>
-            </div>
+    <div id="client-header">
+        <span id="client-name-display">Cliente</span>
+        <div>
+            <button class="logout-btn-small" onclick="toggleTheme()"><i class="fa-solid fa-moon"></i></button>
+            <button class="logout-btn-small" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i></button>
+        </div>
+    </div>
+
+    <div class="search-box-wrapper">
+        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+        <input type="text" id="client-search-input" placeholder="Buscar fazenda ou talhão..." onkeyup="filterClientList()">
+    </div>
+    <div id="farms-list"></div>
+
+    <div id="download-area">
+        <button class="btn btn-accent" style="width:100%" onclick="requestOS()">Gerar Solicitação (OS)</button>
+        
+        <button class="btn" style="width:100%; margin-top:10px; background-color:var(--text-light); color:white;" onclick="openClientHistory()">
+            <i class="fa-solid fa-clock-rotate-left"></i> Meus Pedidos
+        </button>
+    </div>
+</div>
             <div id="map"></div>
             
             <button id="fab-os-mobile" onclick="requestOS()">
