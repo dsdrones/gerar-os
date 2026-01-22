@@ -698,7 +698,10 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
     if (!osMap) {
         osMap = L.map('os-map', {
             zoomControl: false,
-            zoomSnap: 0.1, zoomDelta: 0.1, wheelPxPerZoomLevel: 120
+            // ZOOM SCROLL
+            zoomSnap: 0.05,          // De 0.1 para 0.05 (mais suave)
+            zoomDelta: 0.05,         // De 0.1 para 0.05
+            wheelPxPerZoomLevel: 500 // De 120 para 500 (Zoom bem lento e preciso)
         }).setView([-14, -52], 5);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
@@ -725,8 +728,41 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
 
     osLayers.clearLayers(); osLabels.clearLayers();
     document.getElementById('os-legend-content').innerHTML = "";
-    document.getElementById('cfg-title-text').value = `OS - ${osData.clientName}`;
+    // --- MUDANÇA: TÍTULO PADRÃO AUTOMÁTICO ---
+    
+    // 1. Prepara os textos em MAIÚSCULO
+    const nomeCliente = osData.clientName ? osData.clientName.toUpperCase() : "CLIENTE";
+    const tipoAplicacao = osData.tipoAplicacao ? osData.tipoAplicacao.toUpperCase() : "SERVIÇO";
+
+    // 2. Monta a frase: "CLIENTE - MAPA ESTRATÉGICO - TIPO"
+    const tituloPadrao = `${nomeCliente} - MAPA ESTRATÉGICO - ${tipoAplicacao}`;
+
+    // 3. Aplica no campo e no mapa
+    document.getElementById('cfg-title-text').value = tituloPadrao;
     updateOSTitle();
+    
+    // CAMINHO DA IMAGEM: Pasta 'imagem' + Nome do arquivo
+    // ATENÇÃO: Verifique se o nome é 'logo.png', 'logo.jpg', etc.
+    const urlSuaLogo = "imagem/logo.png"; 
+
+    const imgLogo = document.getElementById('os-map-logo');
+    
+    if(imgLogo) {
+        imgLogo.src = urlSuaLogo;
+        
+        // Se a imagem não carregar (ex: nome errado), ele não mostra o ícone de "quebrado"
+        imgLogo.onerror = function() { 
+            console.warn("Logo não encontrada em: " + urlSuaLogo);
+            this.style.display = 'none'; // Esconde se der erro
+        };
+        imgLogo.onload = function() {
+            this.style.display = 'block'; // Mostra quando carregar
+        };
+
+        // Reseta o input de arquivo manual
+        document.getElementById('cfg-logo-file').value = ""; 
+    }
+    // ==============================
 
     // --- LIMPA A LISTA GLOBAL DE DADOS ---
     loadedOSFeatures = []; 
@@ -884,7 +920,29 @@ function toggleOSPreviewMode() {
     if(isPreviewMode) { document.body.classList.add('preview-active'); osMap.invalidateSize(); const b=L.latLngBounds([]); osLayers.eachLayer(l=>{if(l.getBounds) b.extend(l.getBounds())}); if(b.isValid()) osMap.fitBounds(b); }
     else { document.body.classList.remove('preview-active'); osMap.invalidateSize(); }
 }
-function printOS() { if(!isPreviewMode) { toggleOSPreviewMode(); setTimeout(()=>window.print(),1000); } else window.print(); }
+
+function printOS() {
+    // 1. Adiciona a etiqueta
+    document.body.classList.add('printing-map');
+
+    // 2. Força o modo preview (tela cheia)
+    if(!isPreviewMode) {
+        toggleOSPreviewMode();
+    }
+    
+    // 3. O SEGREDO: Força o Leaflet a recalcular o tamanho do mapa
+    // Isso evita o bug da tela branca ou cinza
+    if(osMap) osMap.invalidateSize();
+
+    // 4. Delay um pouco maior para garantir que o mapa carregou os tiles
+    setTimeout(() => {
+        window.print();
+
+        // 5. Remove a etiqueta depois de imprimir
+        document.body.classList.remove('printing-map');
+    }, 800); // Aumentei para 800ms para dar tempo do navegador processar
+}
+
 function toggleConfigBody() {
     const body = document.getElementById('config-body');
     const panel = document.getElementById('config-panel');
@@ -1048,7 +1106,94 @@ function closeOrderDetails() {
 }
 
 function printOrderReport() {
-    window.print();
+    // 1. AQUI ESTÁ A MUDANÇA: Usamos o ID que já está no seu HTML
+    const elementoImpressao = document.getElementById('printable-order-content');
+
+    if (!elementoImpressao) {
+        alert("Erro: Elemento de impressão não encontrado.");
+        return;
+    }
+
+    const conteudoRelatorio = elementoImpressao.innerHTML;
+
+    // 2. Abre a janela em branco
+    const janelaPrint = window.open('', '', 'height=800,width=900');
+
+    janelaPrint.document.write('<html><head><title>Relatório de Solicitação</title>');
+    
+    // 3. Estilos de Impressão (Ajustados para o seu HTML)
+    janelaPrint.document.write(`
+        <style>
+            body { 
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                padding: 40px; 
+                color: #000;
+                -webkit-print-color-adjust: exact; /* Força imprimir cores de fundo */
+            }
+            
+            /* Ajuste do Cabeçalho do Relatório */
+            .report-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 2px solid #000;
+                padding-bottom: 20px;
+                margin-bottom: 20px;
+            }
+            .report-logo { display: flex; align-items: center; gap: 15px; }
+            .report-logo h2 { margin: 0; font-size: 24px; color: #0f172a; }
+            .report-meta p { margin: 5px 0; text-align: right; }
+
+            /* Caixa de Informações */
+            .report-info-box {
+                background-color: #f8f9fa;
+                border: 1px solid #ddd;
+                padding: 15px;
+                border-radius: 5px;
+                margin-bottom: 25px;
+            }
+            .report-info-box p { margin: 8px 0; font-size: 14px; }
+
+            /* Tabela */
+            table.report-table { 
+                width: 100%; 
+                border-collapse: collapse; 
+                margin-top: 10px; 
+            }
+            th, td { 
+                border: 1px solid #ccc; 
+                padding: 10px; 
+                text-align: left; 
+                font-size: 13px; 
+            }
+            thead { background-color: #e2e8f0 !important; font-weight: bold; }
+            
+            /* Rodapé */
+            .report-footer {
+                margin-top: 40px;
+                text-align: center;
+                font-size: 12px;
+                color: #666;
+                border-top: 1px solid #eee;
+                padding-top: 20px;
+            }
+
+            /* Evita corte de linhas na quebra de página */
+            tr { page-break-inside: avoid; }
+        </style>
+    `);
+    
+    janelaPrint.document.write('</head><body>');
+    janelaPrint.document.write(conteudoRelatorio);
+    janelaPrint.document.write('</body></html>');
+
+    janelaPrint.document.close(); 
+    janelaPrint.focus(); 
+    
+    setTimeout(() => {
+        janelaPrint.print();
+        janelaPrint.close();
+    }, 500);
 }
 
 

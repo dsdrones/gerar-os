@@ -1171,3 +1171,55 @@ body.dark-mode .search-box-wrapper {
     font-size: 14px;
     pointer-events: none; /* Deixa clicar "através" do ícone */
 }
+
+
+/* ================================================================= */
+/* CORREÇÃO DO PDF DO MAPA (Técnica de Visibilidade)                 */
+/* ================================================================= */
+
+@media print {
+    /* 1. SE estivermos imprimindo o mapa (tem a classe printing-map) */
+    body.printing-map * {
+        visibility: hidden; /* Apaga tudo na página */
+    }
+
+    /* 2. Acende APENAS o Editor e tudo o que tem dentro dele (mapa, linhas, textos) */
+    body.printing-map #os-editor-overlay,
+    body.printing-map #os-editor-overlay * {
+        visibility: visible;
+    }
+
+    /* 3. Posiciona o Editor para ocupar a folha inteira */
+    body.printing-map #os-editor-overlay {
+        position: fixed !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        z-index: 9999999 !important; /* Acima de tudo */
+    }
+
+    /* 4. Garante que o container do mapa (Leaflet) tenha tamanho */
+    body.printing-map #os-map {
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    /* 5. Esconde as ferramentas (Botões, Zoom) para o papel sair limpo */
+    /* Note que usamos display: none AQUI, para eles não ocuparem espaço */
+    body.printing-map .os-toolbar,
+    body.printing-map .os-config-panel,
+    body.printing-map .leaflet-control-zoom,
+    body.printing-map .btn {
+        display: none !important;
+    }
+
+    /* 6. Força Paisagem */
+    @page {
+        size: landscape;
+        margin: 0;
+    }
+}
