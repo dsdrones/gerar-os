@@ -1315,3 +1315,29 @@ function filterClientList() {
         }
     });
 }
+
+
+// Função para Concluir a OS
+function finishOS(osId) {
+    if(!confirm("Deseja marcar esta solicitação como CONCLUÍDA?")) return;
+
+    // Atualiza o status no banco de dados
+    db.collection('service_orders').doc(osId).update({
+        status: 'concluido',
+        dataConclusao: new Date()
+    }).then(() => {
+        showToast("Solicitação concluída com sucesso!", "success");
+        
+        // --- CORREÇÃO AQUI ---
+        // Chama a função correta que atualiza a tabela do seu sistema
+        loadServiceOrders(); 
+        
+        // Se houver algum modal de detalhes aberto, fecha (evita erros)
+        if(typeof closeOrderDetails === 'function') closeOrderDetails(); 
+        if(typeof closeModal === 'function') closeModal();
+
+    }).catch(error => {
+        console.error("Erro ao concluir:", error);
+        showToast("Erro ao concluir solicitação.", "error");
+    });
+}
