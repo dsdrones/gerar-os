@@ -1631,37 +1631,29 @@ function switchClientTab(tabId) {
 let userLocationMarker = null;
 let userLocationCircle = null;
 
-// --- FUNÇÃO DE GPS ---
+// --- FUNÇÃO QUE CRIA O BOTÃO (ATUALIZADA) ---
 function addLocationControl() {
-    // Cria um controle customizado do Leaflet
     const LocationControl = L.Control.extend({
-        options: { position: 'bottomright' }, // Posição: Canto inferior direito
-
+        options: { position: 'bottomright' },
         onAdd: function(map) {
-            const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            // AQUI ESTÁ O SEGREDO: Adicionei 'gps-control-box' para podermos alinhar a caixa
+            const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control gps-control-box');
+            
             const button = L.DomUtil.create('a', 'leaflet-control-locate', container);
             button.innerHTML = '<i class="fa-solid fa-crosshairs"></i>';
             button.href = "#";
             button.title = "Minha Localização";
-
-            // Impede o clique de passar pro mapa
+            
             L.DomEvent.disableClickPropagation(button);
-
-            // Ao clicar no botão
             L.DomEvent.on(button, 'click', function(e) {
                 L.DomEvent.stop(e);
-                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; // Ícone carregando
+                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
                 button.classList.add('locating-pulse');
-                
-                // Pede a localização
                 map.locate({setView: true, maxZoom: 16, enableHighAccuracy: true});
             });
-
             return container;
         }
     });
-
-    // Adiciona o botão no mapa do cliente
     if(map) map.addControl(new LocationControl());
 }
 
@@ -1709,6 +1701,48 @@ function onLocationError(e) {
         btnLocate.classList.remove('locating-pulse');
     }
 }
+
+// =================================================================
+// LÓGICA DA FOTO DE PERFIL
+// =================================================================
+
+// 1. Função chamada quando o usuário escolhe uma foto
+function saveProfilePhoto(input) {
+    if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        
+        reader.onload = function(e) {
+            const base64Image = e.target.result;
+            
+            // Salva na memória do navegador/celular
+            localStorage.setItem('user_avatar', base64Image);
+            
+            // Atualiza a tela na hora
+            loadProfilePhoto();
+        }
+        
+        // Lê o arquivo de imagem
+        reader.readAsDataURL(input.files[0]);
+    }
+}
+
+// 2. Função que carrega a foto salva (se existir)
+function loadProfilePhoto() {
+    const savedImage = localStorage.getItem('user_avatar');
+    const imgElement = document.getElementById('profile-image');
+    const iconElement = document.getElementById('profile-icon');
+    
+    if (savedImage && imgElement && iconElement) {
+        // Se tem foto salva: Mostra a IMG e esconde o ÍCONE
+        imgElement.src = savedImage;
+        imgElement.style.display = 'block';
+        iconElement.style.display = 'none';
+    }
+}
+
+// 3. Importante: Tenta carregar a foto assim que o app abre
+// Adicione esta linha no final do arquivo, fora de qualquer função
+document.addEventListener('DOMContentLoaded', loadProfilePhoto);
 
 // 4. "Ouvintes" de Conexão
 window.addEventListener('online', () => {
