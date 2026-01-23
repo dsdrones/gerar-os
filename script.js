@@ -10,22 +10,34 @@ const firebaseConfig = {
     measurementId: "G-VNZRBCNM3D"
 };
 
+// Inicializa o App Principal
 const app = firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
+
+// Inicializa o App Secundário (Para criar contas de cliente)
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
 
-// HABILITAR MODO OFFLINE (PERSISTÊNCIA)
-db.enablePersistence()
-    .catch((err) => {
+// --- NOVO CÓDIGO DE MODO OFFLINE (SEM AVISO AMARELO) ---
+try {
+    // Tenta configurar o cache do jeito novo (Firebase 10+)
+    db.settings({
+        cache: firebase.firestore.persistentLocalCache({
+            tabManager: firebase.firestore.persistentMultipleTabManager()
+        })
+    });
+} catch (err) {
+    // Se der erro (ou for navegador antigo), usa o jeito clássico
+    console.log("Tentando persistência clássica...");
+    db.enablePersistence().catch((err) => {
         if (err.code == 'failed-precondition') {
             console.log("Múltiplas abas abertas atrapalham a persistência.");
         } else if (err.code == 'unimplemented') {
             console.log("O navegador não suporta persistência.");
         }
     });
-
+}
 // Variáveis Globais
 let map, adminMap, osMap; 
 let osLayers = L.layerGroup();
