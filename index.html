@@ -37,7 +37,16 @@
         
         <div id="admin-interface" class="hidden" style="display:flex; width:100%;">
             <div class="admin-sidebar">
-                <div class="admin-brand"><i class="fa-solid fa-layer-group"></i> <span>DS Admin</span></div>
+               
+			   <div class="admin-brand">
+                    <div class="brand-content" style="display:flex; align-items:center; gap:10px;">
+                        <i class="fa-solid fa-layer-group"></i> 
+                        <span class="sidebar-text">DS Admin</span>
+                    </div>
+                    <button class="btn-toggle-sidebar" onclick="toggleSidebar()" title="Minimizar Menu">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                </div>
                 
                 <div class="admin-menu-item active" onclick="showAdminTab('tab-clientes')">
                     <i class="fa-solid fa-users"></i> <span>Clientes</span>
@@ -89,26 +98,34 @@
                     </div>
                 </div>
 
-                <<div id="tab-mapas-admin" class="hidden" style="height: 100%; display: flex; flex-direction: column;">
+                <div id="tab-mapas-admin" class="hidden" style="height: 100%; display: flex; flex-direction: column;">
     
-    <div id="map-controls-bar">
-        <h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap;">Visão Geral</h2>
-        
-        <select id="map-admin-client-select" onchange="loadAdminFarmsList(this.value)">
-            <option value="">Filtrar Cliente...</option>
-        </select>
-        
-        <select id="map-admin-farm-select" disabled onchange="loadAdminMap(this.value)">
-            <option>Selecione a Fazenda...</option>
-        </select>
-        
-        <button class="btn btn-primary" onclick="loadAllFarmsOnMap()" title="Ver Tudo">
-            <i class="fa-solid fa-earth-americas"></i> Todos
-        </button>
-    </div>
+                    <div id="map-controls-bar">
+                        <h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap;">Visão Geral</h2>
+                        
+                        <select id="map-admin-client-select" onchange="loadAdminFarmsList(this.value)">
+                            <option value="">Filtrar Cliente...</option>
+                        </select>
+                        
+                        <select id="map-admin-farm-select" disabled onchange="loadAdminMap(this.value)">
+                            <option>Selecione a Fazenda...</option>
+                        </select>
+                        
+                        <div id="farm-color-control" style="display:none; align-items: center; gap: 8px;">
+                            <input type="color" id="farm-color-picker" onchange="updateColorPreview(this.value)">
+                            <label for="farm-color-picker" id="color-preview-circle" title="Escolher cor da fazenda"></label>
+                            <button class="btn-icon-save" onclick="saveFarmColor()" title="Salvar Nova Cor">
+                                <i class="fa-solid fa-check"></i>
+                            </button>
+                        </div>
+                        
+                        <button class="btn btn-primary" onclick="loadAllFarmsOnMap()" title="Ver Tudo">
+                            <i class="fa-solid fa-earth-americas"></i> Todos
+                        </button>
+                    </div>
 
-    <div id="admin-map"></div>
-</div>
+                    <div id="admin-map" style="flex: 1; width: 100%;"></div>
+                </div>
 
                 <div id="tab-solicitacoes" class="hidden">
                     <div class="section-header"><h2>Solicitações de Serviço</h2></div>
@@ -134,28 +151,28 @@
             <button id="mobile-menu-btn" onclick="toggleMobileSidebar()"><i class="fa-solid fa-bars"></i></button>
             <div id="sidebar-overlay-mobile" onclick="toggleMobileSidebar()"></div>
             <div id="client-sidebar">
-    <div id="client-header">
-        <span id="client-name-display">Cliente</span>
-        <div>
-            <button class="logout-btn-small" onclick="toggleTheme()"><i class="fa-solid fa-moon"></i></button>
-            <button class="logout-btn-small" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i></button>
-        </div>
-    </div>
+                <div id="client-header">
+                    <span id="client-name-display">Cliente</span>
+                    <div>
+                        <button class="logout-btn-small" onclick="toggleTheme()"><i class="fa-solid fa-moon"></i></button>
+                        <button class="logout-btn-small" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i></button>
+                    </div>
+                </div>
 
-    <div class="search-box-wrapper">
-        <i class="fa-solid fa-magnifying-glass search-icon"></i>
-        <input type="text" id="client-search-input" placeholder="Buscar fazenda ou talhão..." onkeyup="filterClientList()">
-    </div>
-    <div id="farms-list"></div>
+                <div class="search-box-wrapper">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" id="client-search-input" placeholder="Buscar fazenda ou talhão..." onkeyup="filterClientList()">
+                </div>
+                <div id="farms-list"></div>
 
-    <div id="download-area">
-        <button class="btn btn-accent" style="width:100%" onclick="requestOS()">Gerar Solicitação (OS)</button>
-        
-        <button class="btn" style="width:100%; margin-top:10px; background-color:var(--text-light); color:white;" onclick="openClientHistory()">
-            <i class="fa-solid fa-clock-rotate-left"></i> Meus Pedidos
-        </button>
-    </div>
-</div>
+                <div id="download-area">
+                    <button class="btn btn-accent" style="width:100%" onclick="requestOS()">Gerar Solicitação (OS)</button>
+                    
+                    <button class="btn" style="width:100%; margin-top:10px; background-color:var(--text-light); color:white;" onclick="openClientHistory()">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Meus Pedidos
+                    </button>
+                </div>
+            </div>
             <div id="map"></div>
             
             <button id="fab-os-mobile" onclick="requestOS()">
@@ -181,8 +198,8 @@
                 </div>
         </div>
     </div>
-	
-	<div id="order-details-modal" class="modal-overlay hidden">
+    
+    <div id="order-details-modal" class="modal-overlay hidden">
         <div class="modal-box" style="max-width: 700px;">
             <div class="modal-header no-print">
                 <h3><i class="fa-solid fa-file-invoice"></i> Detalhes da Solicitação</h3>
@@ -333,20 +350,20 @@
 
                 <div class="separator"></div>
 
-<div style="display: grid; gap: 8px;">
-    
-    <button class="btn" onclick="saveProjectJSON()" style="width:100%; background-color:#64748b; color:white;">
-        <i class="fa-solid fa-floppy-disk"></i> Salvar Projeto (.json)
-    </button>
+                <div style="display: grid; gap: 8px;">
+                    
+                    <button class="btn" onclick="saveProjectJSON()" style="width:100%; background-color:#64748b; color:white;">
+                        <i class="fa-solid fa-floppy-disk"></i> Salvar Projeto (.json)
+                    </button>
 
-    <button class="btn btn-accent" onclick="toggleOSPreviewMode()" style="width:100%;">
-        <i class="fa-solid fa-eye"></i> Visualizar A0
-    </button>
+                    <button class="btn btn-accent" onclick="toggleOSPreviewMode()" style="width:100%;">
+                        <i class="fa-solid fa-eye"></i> Visualizar A0
+                    </button>
 
-    <button class="btn btn-success" onclick="printOS()" style="width:100%;">
-        <i class="fa-solid fa-file-pdf"></i> Gerar PDF
-    </button>
-</div>
+                    <button class="btn btn-success" onclick="printOS()" style="width:100%;">
+                        <i class="fa-solid fa-file-pdf"></i> Gerar PDF
+                    </button>
+                </div>
             </div>
         </div>
 

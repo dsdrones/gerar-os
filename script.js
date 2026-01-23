@@ -16,6 +16,16 @@ const db = firebase.firestore();
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
 
+// HABILITAR MODO OFFLINE (PERSISTÊNCIA)
+db.enablePersistence()
+    .catch((err) => {
+        if (err.code == 'failed-precondition') {
+            console.log("Múltiplas abas abertas atrapalham a persistência.");
+        } else if (err.code == 'unimplemented') {
+            console.log("O navegador não suporta persistência.");
+        }
+    });
+
 // Variáveis Globais
 let map, adminMap, osMap; 
 let osLayers = L.layerGroup();
@@ -59,7 +69,11 @@ auth.onAuthStateChanged(async (user) => {
     }
 });
 
-function login() { const e = document.getElementById('email').value; const p = document.getElementById('password').value; auth.signInWithEmailAndPassword(e, p).catch(err => alert("Erro: " + err.message)); }
+function login() { const e = document.getElementById('email').value;
+const p = document.getElementById('password').value; 
+auth.signInWithEmailAndPassword(e, p)
+.catch(err => alert("Erro: " + err.message)); }
+
 function logout() { auth.signOut(); location.reload(); }
 function toggleTheme() { document.body.classList.toggle('dark-mode'); localStorage.setItem('ds-theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light'); updateThemeIcons(document.body.classList.contains('dark-mode')); }
 function updateThemeIcons(isDark) { document.querySelectorAll('.fa-moon, .fa-sun').forEach(icon => { if (isDark) { icon.classList.remove('fa-moon'); icon.classList.add('fa-sun'); } else { icon.classList.remove('fa-sun'); icon.classList.add('fa-moon'); } }); }
@@ -268,7 +282,6 @@ function closeOSModal() {
     document.getElementById('new-os-modal').classList.add('hidden');
 }
 
-// 3. Função chamada pelo botão "Enviar Pedido" (Salva no Firebase)
 function finalizeOS() {
     const type = document.getElementById('os-type-input').value;
     
@@ -280,39 +293,79 @@ function finalizeOS() {
     const user = firebase.auth().currentUser;
     const clientName = document.getElementById('client-name-display').innerText;
     const btnSend = document.querySelector('#new-os-modal .btn-success');
+    const originalText = "Enviar Pedido"; // Texto original do botão
     
-    // Feedback visual (Desabilita botão para não clicar 2x)
-    const originalText = btnSend.innerText;
-    btnSend.innerText = "Enviando...";
+    // Feedback visual imediato
+    btnSend.innerText = "Processando...";
     btnSend.disabled = true;
 
-    db.collection('service_orders').add({
+    // Objeto da OS
+    const newOrder = {
         clientUid: user.uid,
         clientName: clientName,
         status: 'pendente',
-        tipoAplicacao: type, // <--- CAMPO NOVO AQUI
+        tipoAplicacao: type,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        items: pendingOSItems
-    }).then(() => {
-        alert("Solicitação enviada com sucesso!");
-        
-        // Limpa tudo
-        document.querySelectorAll('.chk-export:checked').forEach(c => { 
-            c.checked = false; 
-            c.dispatchEvent(new Event('change')); 
+        items: pendingOSItems,
+        offlineCreated: false
+    };
+
+    // --- FUNÇÃO AUXILIAR: Tenta enviar com limite de tempo ---
+    const tryOnlineSend = () => {
+        return new Promise((resolve, reject) => {
+            // Define um limite de 3 segundos (3000ms)
+            const timeout = setTimeout(() => {
+                reject("Timeout: Internet muito lenta ou inexistente");
+            }, 3000);
+
+            db.collection('service_orders').add(newOrder)
+            .then((docRef) => {
+                clearTimeout(timeout); // Cancela o timer se deu certo
+                resolve(docRef);
+            })
+            .catch((err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
         });
+    };
+
+    // --- LÓGICA DE DECISÃO ---
+    // Se o navegador diz que está offline, nem tenta enviar, salva direto.
+    if (!navigator.onLine) {
+        saveOfflineOrder(newOrder);
+        return;
+    }
+
+    // Se diz que está online, TENTA enviar, mas com o cronômetro ligado
+    tryOnlineSend()
+    .then(() => {
+        // SUCESSO ONLINE
+        alert("Solicitação enviada com sucesso!");
+        resetOSForm();
+    })
+    .catch((error) => {
+        // FALHA (Erro ou Timeout) -> Joga pro Offline
+        console.warn("Envio online falhou (" + error + "). Salvando offline...");
         
-        closeOSModal();
+        // Ajusta o objeto para modo offline (precisa de data fixa, não serverTimestamp)
+        newOrder.createdAt = new Date(); 
+        newOrder.offlineCreated = true;
         
-        // Restaura botão
-        btnSend.innerText = originalText;
-        btnSend.disabled = false;
-        
-    }).catch(e => {
-        alert("Erro ao enviar: " + e);
-        btnSend.innerText = originalText;
-        btnSend.disabled = false;
+        // Chama a função de salvar localmente
+        saveOfflineOrder(newOrder);
     });
+}
+
+// Função auxiliar para limpar o formulário
+function resetOSForm() {
+    document.querySelectorAll('.chk-export:checked').forEach(c => { 
+        c.checked = false; 
+        c.dispatchEvent(new Event('change')); 
+    });
+    closeOSModal();
+    const btn = document.querySelector('#new-os-modal .btn-success');
+    if(btn) { btn.innerText = "Enviar Pedido"; btn.disabled = false; }
 }
 
 function toggleMobileSidebar() { 
@@ -518,54 +571,64 @@ function loadAdminFarmsList(uid) {
 }
 
 function loadAdminMap(fid) {
-    if(!fid) return;
+    const colorControl = document.getElementById('farm-color-control');
     
+    // 1. Controle de exibição (Segurança extra)
+    if(!fid) {
+        if(colorControl) colorControl.style.display = 'none';
+        return;
+    }
+    
+    // FORÇA O CONTROLE A APARECER
+    if(colorControl) {
+        colorControl.classList.remove('hidden'); // Remove a classe se ela existir
+        colorControl.style.display = 'flex';     // Força o display flex
+    }
+
     const farmColors = [
         '#e74c3c', '#8e44ad', '#3498db', '#1abc9c', '#f1c40f', 
         '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b',
         '#9b59b6', '#16a085', '#f39c12', '#27ae60', '#7f8c8d', 
         '#2c3e50', '#e84393', '#00cec9', '#6c5ce7', '#fdcb6e', 
-        '#d63031', '#0984e3', '#00b894', '#ffeaa7', '#ff7675', 
-        '#a29bfe', '#636e72', '#55efc4', '#fd79a8', '#fab1a0'
+        '#d63031', '#0984e3', '#00b894', '#ffeaa7', '#ff7675'
     ];
 
     db.collection('fazendas').doc(fid).get().then(doc => {
+        if (!doc.exists) return;
+
         const f = doc.data(); 
         const b = L.latLngBounds();
         
         if(adminMap) adminMap.eachLayer(l => { if(!l._url) adminMap.removeLayer(l) });
         
+        // Lógica da Cor
         const colorIndex = f.numero ? f.numero : 0;
-        const currentColor = farmColors[colorIndex % farmColors.length];
+        const autoColor = farmColors[colorIndex % farmColors.length];
+        const finalColor = f.cor ? f.cor : autoColor; 
+
+        // Atualiza a bolinha
+        const picker = document.getElementById('farm-color-picker');
+        if(picker) picker.value = finalColor;
+        
+        if(typeof updateColorPreview === 'function') updateColorPreview(finalColor);
 
         f.talhoes.forEach(t => { 
             try {
                 const geoData = JSON.parse(t.geometry);
-                // AQUI: Usa somente o nome original do KML
                 const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
-                
                 const areaM2 = turf.area(geoData);
                 const areaHa = (areaM2 / 10000).toFixed(2);
 
                 const p = L.geoJSON(geoData, {
-                    style: { color: '#000000', weight: 1, fillColor: currentColor, fillOpacity: 0.8 }
+                    style: { color: '#000000', weight: 1, fillColor: finalColor, fillOpacity: 0.8 }
                 }).addTo(adminMap);
                 
-                // --- RÓTULO LIMPO (Nome + Área) ---
                 const center = turf.centerOfMass(geoData);
-                const labelHtml = `
-                    <div>
-                        <span style="font-size:12px">${displayName}</span><br>
-                        <span style="font-size:10px">${areaHa} ha</span>
-                    </div>
-                `;
-                
+                const labelHtml = `<div><span style="font-size:12px">${displayName}</span><br><span style="font-size:10px">${areaHa} ha</span></div>`;
                 const labelIcon = L.divIcon({ className: 'admin-map-label', html: labelHtml, iconSize: [0,0] });
                 L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon: labelIcon}).addTo(adminMap);
                 
-                // Tooltip continua com informação completa ao passar o mouse
                 p.bindTooltip(`<strong>${displayName}</strong> (${areaHa} ha)`, { direction: 'top' }); 
-                
                 b.extend(p.getBounds());
             } catch(e){} 
         });
@@ -577,17 +640,17 @@ function loadAdminMap(fid) {
 function loadAllFarmsOnMap() {
     if(!adminMap) initAdminMap(); 
     
+    // Esconde o controle de cor pois estamos vendo todas
+    const colorControl = document.getElementById('farm-color-control');
+    if(colorControl) colorControl.style.display = 'none';
+
     adminMap.eachLayer(l => { if(!l._url) adminMap.removeLayer(l) });
     document.getElementById('map-admin-client-select').value = ""; 
     document.getElementById('map-admin-farm-select').disabled = true;
 
     const farmColors = [
         '#e74c3c', '#8e44ad', '#3498db', '#1abc9c', '#f1c40f', 
-        '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b',
-        '#9b59b6', '#16a085', '#f39c12', '#27ae60', '#7f8c8d', 
-        '#2c3e50', '#e84393', '#00cec9', '#6c5ce7', '#fdcb6e', 
-        '#d63031', '#0984e3', '#00b894', '#ffeaa7', '#ff7675', 
-        '#a29bfe', '#636e72', '#55efc4', '#fd79a8', '#fab1a0'
+        '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b'
     ];
 
     db.collection('fazendas').get().then(snap => {
@@ -596,22 +659,23 @@ function loadAllFarmsOnMap() {
 
         snap.forEach(doc => {
             const f = doc.data();
+            
+            // --- MESMA LÓGICA DE COR AQUI ---
             const colorIndex = f.numero ? f.numero : 0;
-            const currentColor = farmColors[colorIndex % farmColors.length];
+            const autoColor = farmColors[colorIndex % farmColors.length];
+            const finalColor = f.cor ? f.cor : autoColor; // Prioriza a cor salva
             
             f.talhoes.forEach(t => { 
                 try {
                     const geoData = JSON.parse(t.geometry);
-                    // AQUI: Usa somente o nome original do KML
                     const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
                     const areaM2 = turf.area(geoData);
                     const areaHa = (areaM2 / 10000).toFixed(2);
 
                     const p = L.geoJSON(geoData, {
-                        style: { color: '#000000', weight: 1, fillColor: currentColor, fillOpacity: 0.7 } // --> COR DA BORDA DO MAPA //
+                        style: { color: '#000000', weight: 1, fillColor: finalColor, fillOpacity: 0.7 } 
                     }).addTo(adminMap);
                     
-                    // --- RÓTULO LIMPO ---
                     const center = turf.centerOfMass(geoData);
                     const labelHtml = `
                         <div>
@@ -1341,3 +1405,170 @@ function finishOS(osId) {
         showToast("Erro ao concluir solicitação.", "error");
     });
 }
+
+
+// Função para Salvar a Cor escolhida
+function saveFarmColor() {
+    const fid = document.getElementById('map-admin-farm-select').value;
+    const color = document.getElementById('farm-color-picker').value;
+
+    if(!fid) {
+        showToast("Selecione uma fazenda primeiro.", "error");
+        return;
+    }
+
+    db.collection('fazendas').doc(fid).update({
+        cor: color // Salva a cor no banco de dados
+    }).then(() => {
+        showToast("Cor da fazenda atualizada!", "success");
+        // Recarrega o mapa para ver a mudança
+        loadAdminMap(fid); 
+    }).catch(e => {
+        showToast("Erro ao salvar cor.", "error");
+        console.error(e);
+    });
+}
+
+//============================================
+// 1. Função para Abrir/Fechar o Menu Lateral
+//============================================
+
+function toggleSidebar() {
+    const sidebar = document.querySelector('.admin-sidebar');
+    sidebar.classList.toggle('collapsed');
+    
+    // IMPORTANTE: Força o mapa a se ajustar ao novo espaço
+    setTimeout(() => {
+        if(adminMap) adminMap.invalidateSize();
+        if(osMap) osMap.invalidateSize();
+    }, 350); // Espera a animação do CSS terminar
+}
+
+// 2. Atualiza a cor da bolinha visualmente
+function updateColorPreview(color) {
+    const circle = document.getElementById('color-preview-circle');
+    if(circle) {
+        circle.style.backgroundColor = color;
+    }
+}
+
+
+// Atualiza a cor da bolinha visualmente (Chamada pelo onchange do HTML)
+function updateColorPreview(color) {
+    const circle = document.getElementById('color-preview-circle');
+    if(circle) {
+        circle.style.backgroundColor = color;
+    }
+}
+
+// Salva a cor no banco de dados (Chamada pelo botão de check)
+function saveFarmColor() {
+    const fid = document.getElementById('map-admin-farm-select').value;
+    const color = document.getElementById('farm-color-picker').value;
+
+    if(!fid) {
+        showToast("Selecione uma fazenda primeiro.", "error");
+        return;
+    }
+
+    db.collection('fazendas').doc(fid).update({
+        cor: color
+    }).then(() => {
+        showToast("Cor atualizada!", "success");
+        loadAdminMap(fid); // Recarrega para confirmar
+    }).catch(e => {
+        console.error(e);
+        showToast("Erro ao salvar cor.", "error");
+    });
+}
+
+
+// === SISTEMA OFFLINE RURAL ===
+
+// 1. Salva a OS no LocalStorage (Memória do celular)
+function saveOfflineOrder(orderData) {
+    // Pega o que já tem salvo
+    let pending = JSON.parse(localStorage.getItem('ds_offline_orders') || "[]");
+    
+    // Adiciona a nova (Como não tem serverTimestamp offline, usamos Date)
+    orderData.createdAt = new Date(); 
+    orderData.offlineCreated = true; // Marca que foi criado offline
+    
+    pending.push(orderData);
+    
+    // Salva de volta
+    localStorage.setItem('ds_offline_orders', JSON.stringify(pending));
+    
+    alert("Sem internet! A solicitação foi salva no dispositivo e será enviada automaticamente quando o sinal voltar.");
+    resetOSForm();
+    updateOfflineBadge(); // Atualiza contador visual
+}
+
+// 2. Sincroniza quando a internet volta
+function syncOfflineOrders() {
+    const pending = JSON.parse(localStorage.getItem('ds_offline_orders') || "[]");
+    
+    if (pending.length === 0) return; // Nada para enviar
+
+    showToast(`Sincronizando ${pending.length} pedidos...`, "info");
+
+    const promises = pending.map(order => {
+        // Remove a flag de controle antes de enviar
+        delete order.offlineCreated;
+        // Converte a data de string de volta para objeto data
+        order.createdAt = new Date(order.createdAt); 
+        
+        return db.collection('service_orders').add(order);
+    });
+
+    Promise.all(promises).then(() => {
+        // Se tudo deu certo, limpa a memória local
+        localStorage.removeItem('ds_offline_orders');
+        showToast("Todos os pedidos offline foram enviados!", "success");
+        updateOfflineBadge();
+        
+        // Atualiza o histórico se estiver aberto
+        if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
+            openClientHistory();
+        }
+    }).catch(err => {
+        console.error("Erro na sincronização", err);
+        showToast("Erro ao sincronizar alguns pedidos.", "error");
+    });
+}
+
+// 3. Atualiza um aviso visual na tela (Opcional: Cria um ícone de nuvem)
+function updateOfflineBadge() {
+    const pending = JSON.parse(localStorage.getItem('ds_offline_orders') || "[]");
+    const count = pending.length;
+    
+    // Tenta achar o badge ou cria um
+    let badge = document.getElementById('offline-sync-badge');
+    
+    if (count > 0) {
+        if(!badge) {
+            // Cria o botãozinho flutuante de alerta
+            badge = document.createElement('div');
+            badge.id = 'offline-sync-badge';
+            badge.style.cssText = "position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#e67e22; color:white; padding:8px 15px; border-radius:20px; z-index:9999; font-size:12px; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.2); display:flex; align-items:center; gap:5px; cursor:pointer;";
+            badge.onclick = syncOfflineOrders; // Tenta forçar sync ao clicar
+            document.body.appendChild(badge);
+        }
+        badge.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> ${count} Pendentes (Sem Sinal)`;
+        badge.style.display = 'flex';
+    } else {
+        if(badge) badge.style.display = 'none';
+    }
+}
+
+// 4. "Ouvintes" de Conexão
+window.addEventListener('online', () => {
+    showToast("Internet restabelecida. Sincronizando...", "info");
+    syncOfflineOrders();
+});
+
+window.addEventListener('load', () => {
+    updateOfflineBadge();
+    // Tenta sincronizar ao abrir o app se tiver internet
+    if(navigator.onLine) syncOfflineOrders();
+});

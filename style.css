@@ -1223,3 +1223,152 @@ body.dark-mode .search-box-wrapper {
         margin: 0;
     }
 }
+
+/* ================================================================= */
+/* MENU LATERAL RETRÁTIL (MODERNO E CORRIGIDO)                       */
+/* ================================================================= */
+
+/* 1. O CONTAINER PRINCIPAL DO MENU */
+.admin-sidebar {
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* 2. O CABEÇALHO DO MENU (ONDE ESTÁ O BOTÃO) */
+.admin-brand {
+    display: flex;
+    justify-content: space-between; /* <--- O SEGREDO: Joga um pra esquerda, outro pra direita */
+    align-items: center;
+    padding: 15px 20px;
+    width: 100%;
+    box-sizing: border-box; /* Garante que o padding não estoure a largura */
+    min-height: 60px;
+}
+
+/* O texto "DS Admin" */
+.admin-brand .brand-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap; /* Impede que o texto quebre linha */
+    overflow: hidden;
+}
+
+/* 3. O BOTÃO DE MINIMIZAR */
+.btn-toggle-sidebar {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+    transition: 0.3s;
+}
+.btn-toggle-sidebar:hover { opacity: 1; transform: scale(1.1); }
+
+
+/* ================================================================= */
+/* ESTADOS QUANDO O MENU ESTÁ FECHADO (.collapsed)                   */
+/* ================================================================= */
+
+/* Menu fica fininho */
+.admin-sidebar.collapsed {
+    width: 70px !important; 
+}
+
+/* Esconde textos dos itens de menu */
+.admin-sidebar.collapsed .sidebar-text,
+.admin-sidebar.collapsed span {
+    display: none !important;
+    opacity: 0;
+}
+
+/* Centraliza os ícones */
+.admin-sidebar.collapsed .admin-menu-item {
+    justify-content: center;
+    padding: 15px 0;
+}
+.admin-sidebar.collapsed .admin-menu-item i {
+    margin-right: 0;
+    font-size: 1.4rem; /* Ícones um pouco maiores quando fechado */
+}
+
+/* Ajuste do cabeçalho quando fechado */
+.admin-sidebar.collapsed .admin-brand {
+    justify-content: center; /* Centraliza o botão */
+    padding: 15px 0;
+}
+
+/* Esconde a logo e o nome DS Admin, deixando só o botão */
+.admin-sidebar.collapsed .brand-content {
+    display: none !important; 
+}
+/* ================================================================= */
+/* COLOR PICKER MODERNO (BOLINHA)                                    */
+/* ================================================================= */
+
+#farm-color-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    padding: 4px 8px;
+    border-radius: 30px; /* Redondinho */
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    height: 38px;
+}
+
+/* Esconde o input feio original */
+#farm-color-picker {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+/* Cria a bolinha colorida */
+#color-preview-circle {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+    background-color: #333; /* Cor inicial */
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: inset 0 0 0 2px white; /* Borda interna branca chique */
+}
+
+#color-preview-circle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 8px rgba(0,0,0,0.2), inset 0 0 0 2px white;
+}
+
+/* Botão de salvar (Check) */
+.btn-icon-save {
+    background: #22c55e;
+    color: white;
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    transition: 0.2s;
+}
+
+.btn-icon-save:hover {
+    background: #16a34a;
+    transform: scale(1.1);
+}
