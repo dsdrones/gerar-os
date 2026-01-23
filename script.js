@@ -1712,26 +1712,49 @@ function onLocationError(e) {
 }
 
 // =================================================================
-// LÓGICA DA FOTO DE PERFIL
+// LÓGICA DA FOTO DE PERFIL (COM REDIMENSIONAMENTO)
 // =================================================================
 
-// 1. Função chamada quando o usuário escolhe uma foto
 function saveProfilePhoto(input) {
     if (input.files && input.files[0]) {
+        const file = input.files[0];
         const reader = new FileReader();
-        
+
         reader.onload = function(e) {
-            const base64Image = e.target.result;
+            // Cria uma imagem na memória para podermos diminuir ela
+            const img = new Image();
+            img.src = e.target.result;
             
-            // Salva na memória do navegador/celular
-            localStorage.setItem('user_avatar', base64Image);
-            
-            // Atualiza a tela na hora
-            loadProfilePhoto();
+            img.onload = function() {
+                // Configura um Canvas para redimensionar
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                // Define tamanho máximo (ex: 300px). 
+                // Isso faz a foto cair de 5MB para 50KB!
+                const maxWidth = 300;
+                const scaleFactor = maxWidth / img.width;
+                
+                canvas.width = maxWidth;
+                canvas.height = img.height * scaleFactor;
+                
+                // Desenha a imagem pequena no canvas
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                
+                // Converte para texto leve (JPEG qualidade 0.7)
+                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                
+                // Agora sim, salva no LocalStorage sem travar o celular
+                try {
+                    localStorage.setItem('user_avatar', compressedBase64);
+                    loadProfilePhoto(); // Atualiza a tela
+                } catch (err) {
+                    alert("Erro ao salvar: Memória cheia. Tente uma foto menor.");
+                }
+            }
         }
         
-        // Lê o arquivo de imagem
-        reader.readAsDataURL(input.files[0]);
+        reader.readAsDataURL(file);
     }
 }
 
