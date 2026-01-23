@@ -37,8 +37,8 @@
         
         <div id="admin-interface" class="hidden" style="display:flex; width:100%;">
             <div class="admin-sidebar">
-               
-			   <div class="admin-brand">
+                
+               <div class="admin-brand">
                     <div class="brand-content" style="display:flex; align-items:center; gap:10px;">
                         <i class="fa-solid fa-layer-group"></i> 
                         <span class="sidebar-text">DS Admin</span>
@@ -99,7 +99,6 @@
                 </div>
 
                 <div id="tab-mapas-admin" class="hidden" style="height: 100%; display: flex; flex-direction: column;">
-    
                     <div id="map-controls-bar">
                         <h2 style="margin: 0; font-size: 1.2rem; white-space: nowrap;">Visão Geral</h2>
                         
@@ -123,7 +122,6 @@
                             <i class="fa-solid fa-earth-americas"></i> Todos
                         </button>
                     </div>
-
                     <div id="admin-map" style="flex: 1; width: 100%;"></div>
                 </div>
 
@@ -147,264 +145,297 @@
             </div>
         </div>
 
-        <div id="client-interface" class="hidden">
-            <button id="mobile-menu-btn" onclick="toggleMobileSidebar()"><i class="fa-solid fa-bars"></i></button>
-            <div id="sidebar-overlay-mobile" onclick="toggleMobileSidebar()"></div>
-            <div id="client-sidebar">
-                <div id="client-header">
-                    <span id="client-name-display">Cliente</span>
-                    <div>
-                        <button class="logout-btn-small" onclick="toggleTheme()"><i class="fa-solid fa-moon"></i></button>
-                        <button class="logout-btn-small" onclick="logout()"><i class="fa-solid fa-right-from-bracket"></i></button>
-                    </div>
-                </div>
-
-                <div class="search-box-wrapper">
-                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
-                    <input type="text" id="client-search-input" placeholder="Buscar fazenda ou talhão..." onkeyup="filterClientList()">
-                </div>
-                <div id="farms-list"></div>
-
-                <div id="download-area">
-                    <button class="btn btn-accent" style="width:100%" onclick="requestOS()">Gerar Solicitação (OS)</button>
-                    
-                    <button class="btn" style="width:100%; margin-top:10px; background-color:var(--text-light); color:white;" onclick="openClientHistory()">
-                        <i class="fa-solid fa-clock-rotate-left"></i> Meus Pedidos
-                    </button>
-                </div>
-            </div>
-            <div id="map"></div>
+        <div id="client-interface" class="hidden" style="height: 100vh; display: flex; flex-direction: column;">
             
-            <button id="fab-os-mobile" onclick="requestOS()">
-                <i class="fa-solid fa-file-contract"></i> Gerar OS (<span id="fab-count">0</span>)
-            </button>
-        </div>
-    </div>
-
-    <div id="admin-modal" class="modal-overlay hidden">
-        <div class="modal-box">
-            <div class="modal-header"><h3 id="modal-client-name">Detalhes</h3><button onclick="closeModal()" class="close-btn">X</button></div>
-            <div id="modal-content"></div>
-        </div>
-    </div>
-    
-    <div id="client-history-modal" class="modal-overlay hidden">
-        <div class="modal-box">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-list-check"></i> Minhas Solicitações</h3>
-                <button onclick="document.getElementById('client-history-modal').classList.add('hidden')" class="btn-danger" style="border:none; border-radius:4px; cursor:pointer;">X</button>
-            </div>
-            <div id="client-history-content" style="padding: 0;">
-                </div>
-        </div>
-    </div>
-    
-    <div id="order-details-modal" class="modal-overlay hidden">
-        <div class="modal-box" style="max-width: 700px;">
-            <div class="modal-header no-print">
-                <h3><i class="fa-solid fa-file-invoice"></i> Detalhes da Solicitação</h3>
-                <button onclick="closeOrderDetails()" class="close-btn">X</button>
-            </div>
-            
-            <div id="printable-order-content" class="report-content">
-                <div class="report-header">
-                    <div class="report-logo">
-                        <i class="fa-solid fa-layer-group" style="font-size:30px; color:#0f172a;"></i>
-                        <h2>Relatório de solicitações de (OS)</h2>
-                    </div>
-                    <div class="report-meta">
-                        <p><strong>Relatório de Solicitação</strong></p>
-                        <p id="detail-date">Data: --/--/----</p>
-                    </div>
-                </div>
-
-                <div class="report-info-box">
-                    <p><strong>Cliente:</strong> <span id="detail-client">Nome do Cliente</span></p>
-                    <p><strong>Tipo de Aplicação:</strong> <span id="detail-type" class="highlight-type">TIPO</span></p>
-                    <p><strong>Status:</strong> <span id="detail-status">STATUS</span></p>
-                </div>
-
-                <h4 style="border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 20px;">Áreas Selecionadas</h4>
-                <table class="report-table">
-                    <thead>
-                        <tr>
-                            <th>Fazenda</th>
-                            <th>Nº</th>
-                            <th>Talhão / Área</th>
-                        </tr>
-                    </thead>
-                    <tbody id="detail-items-list">
-                        </tbody>
-                </table>
-
-                <div class="report-footer">
-                    <p>Este documento é um comprovante digital de solicitação de serviço.</p>
-                    <p>Gerado pelo Sistema SolicitarOS</p>
-                </div>
-            </div>
-
-            <div class="modal-footer no-print" style="padding: 20px; border-top: 1px solid #eee; text-align: right;">
-                <button class="btn btn-primary" onclick="printOrderReport()"><i class="fa-solid fa-print"></i> Imprimir / Salvar PDF</button>
-            </div>
-        </div>
-    </div>
-    
-    <div id="new-os-modal" class="modal-overlay hidden">
-        <div class="modal-box">
-            <div class="modal-header">
-                <h3><i class="fa-solid fa-paper-plane"></i> Confirmar Solicitação</h3>
-                <button onclick="closeOSModal()" class="close-btn">X</button>
-            </div>
-            <div id="modal-content" style="padding: 20px;">
-                <p id="os-summary-text" style="margin-bottom: 15px; color:var(--text-main);">
-                    Selecionado: 0 talhões
-                </p>
+            <div id="client-content-area" style="flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;">
                 
-                <label for="os-type-input" style="font-weight:bold; display:block; margin-bottom:5px;">Tipo de Aplicação</label>
-                <select id="os-type-input">
-                    <option value="">Selecione...</option>
-                    <option value="Dessecação">Dessecação</option>
-                    <option value="Fungicida">Fungicida</option>
-                    <option value="Inseticida">Inseticida</option>
-                    <option value="Herbicida">Herbicida</option>
-                    <option value="Inibidor">Inibidor</option>
-                    <option value="Adubação Foliar">Adubação Foliar</option>
-                    <option value="Mapeamento">Mapeamento</option>
-                    <option value="Outros">Outros</option>
-                </select>
-
-                <div style="display:flex; gap:10px; margin-top:10px;">
-                    <button class="btn btn-danger" style="flex:1" onclick="closeOSModal()">Cancelar</button>
-                    <button class="btn btn-success" style="flex:1" onclick="finalizeOS()">Enviar Pedido</button>
+                <div id="tab-lista" class="client-tab-content">
+                    <div class="mobile-header">
+                        <h2>Minhas Fazendas</h2>
+                    </div>
+                    <div class="search-box-wrapper" style="margin: 10px;">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input type="text" id="client-search-input" placeholder="Buscar fazenda ou talhão..." onkeyup="filterClientList()">
+                    </div>
+                    <div id="farms-list"></div>
                 </div>
+
+                <div id="tab-mapa" class="client-tab-content active" style="height:100%;">
+                    <div id="map"></div>
+                </div>
+
+                <div id="tab-perfil" class="client-tab-content" style="padding: 20px;">
+                    <div class="profile-card">
+                        <div class="profile-avatar">
+                            <i class="fa-solid fa-user"></i>
+                        </div>
+                        <h2 id="client-name-display">Cliente</h2>
+                        <p>Gestão de Áreas</p>
+                    </div>
+
+                    <div class="profile-menu">
+                        <button class="profile-btn" onclick="openClientHistory()">
+                            <i class="fa-solid fa-clock-rotate-left"></i> Meus Pedidos / Histórico
+                        </button>
+                        <button class="profile-btn" onclick="toggleTheme()">
+                            <i class="fa-solid fa-moon"></i> Alternar Tema (Escuro/Claro)
+                        </button>
+                        <button class="profile-btn logout" onclick="logout()">
+                            <i class="fa-solid fa-right-from-bracket"></i> Sair do App
+                        </button>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 30px; color: #999; font-size: 12px;">
+                        <p>Versão 1.0.6 (Offline Enabled)</p>
+                        <p>DS Mapeamentos</p>
+                    </div>
+                </div>
+
+                <button id="fab-os-mobile" onclick="requestOS()">
+                    <i class="fa-solid fa-file-contract"></i> Gerar OS (<span id="fab-count">0</span>)
+                </button>
+
+            </div>
+
+            <div class="bottom-navbar">
+                <button class="nav-item" onclick="switchClientTab('tab-lista')">
+                    <i class="fa-solid fa-list-ul"></i>
+                    <span>Lista</span>
+                </button>
+                
+                <button class="nav-item active" onclick="switchClientTab('tab-mapa')">
+                    <i class="fa-solid fa-map-location-dot"></i>
+                    <span>Mapa</span>
+                </button>
+                
+                <button class="nav-item" onclick="switchClientTab('tab-perfil')">
+                    <i class="fa-solid fa-user-gear"></i>
+                    <span>Perfil</span>
+                </button>
+            </div>
+
+        </div>
+
+        <div id="admin-modal" class="modal-overlay hidden">
+            <div class="modal-box">
+                <div class="modal-header"><h3 id="modal-client-name">Detalhes</h3><button onclick="closeModal()" class="close-btn">X</button></div>
+                <div id="modal-content"></div>
             </div>
         </div>
-    </div>
-
-    <div id="os-editor-overlay" class="hidden">
         
-        <div id="config-panel">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ddd; padding-bottom:5px;">
-                <strong>Configuração OS</strong>
-                <div>
-                    <button onclick="toggleConfigBody()" style="background:#f39c12; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; margin-right:5px; font-weight:bold;" title="Minimizar Painel">_</button>
-                    <button onclick="closeOSEditor()" style="background:#c0392b; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold;" title="Fechar Editor">X</button>
+        <div id="client-history-modal" class="modal-overlay hidden">
+            <div class="modal-box">
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-list-check"></i> Minhas Solicitações</h3>
+                    <button onclick="document.getElementById('client-history-modal').classList.add('hidden')" class="btn-danger" style="border:none; border-radius:4px; cursor:pointer;">X</button>
                 </div>
+                <div id="client-history-content" style="padding: 0;"></div>
             </div>
+        </div>
+        
+        <div id="order-details-modal" class="modal-overlay hidden">
+            <div class="modal-box" style="max-width: 700px;">
+                <div class="modal-header no-print">
+                    <h3><i class="fa-solid fa-file-invoice"></i> Detalhes da Solicitação</h3>
+                    <button onclick="closeOrderDetails()" class="close-btn">X</button>
+                </div>
+                
+                <div id="printable-order-content" class="report-content">
+                    <div class="report-header">
+                        <div class="report-logo">
+                            <i class="fa-solid fa-layer-group" style="font-size:30px; color:#0f172a;"></i>
+                            <h2>Relatório de solicitações de (OS)</h2>
+                        </div>
+                        <div class="report-meta">
+                            <p><strong>Relatório de Solicitação</strong></p>
+                            <p id="detail-date">Data: --/--/----</p>
+                        </div>
+                    </div>
 
-            <div id="config-body">
-                <div class="config-group">
-                    <label for="cfg-title-text">Título</label>
-                    <input type="text" id="cfg-title-text" placeholder="Titulo..." oninput="updateOSTitle()">
-                </div>
-                <div class="config-group">
-                    <label for="cfg-logo-file">Logo</label>
-                    <input type="file" id="cfg-logo-file" accept="image/*" onchange="updateOSLogo()">
-                </div>
-                
-                <div class="separator"></div>
-                
-                <div class="config-group">
-                    <label for="cfg-stroke-color">Borda Cor</label>
-                    <input type="color" id="cfg-stroke-color" value="#000000" style="height:30px; padding:0; border:none;" onchange="updateOSMapStyles()">
-                </div>
-                <div class="config-group">
-                    <label for="cfg-stroke-width">Espessura</label>
-                    <input type="number" id="cfg-stroke-width" value="1" step="0.1" onchange="updateOSMapStyles()">
-                </div>
-                
-                <div class="separator"></div>
-                
-                <div class="config-group">
-                    <label for="cfg-font-size">Fonte Tam</label>
-                    <input type="number" id="cfg-font-size" value="10" step="0.1" onchange="updateOSMapStyles()">
-                </div>
-                <div class="config-group">
-                    <label for="cfg-font-color">Fonte Cor</label>
-                    <input type="color" id="cfg-font-color" value="#ffffff" style="height:30px; padding:0; border:none;" onchange="updateOSMapStyles()">
-                </div>
-                <div class="config-group">
-                    <label for="cfg-font-stroke-enable">Contorno Tx</label>
-                    <div style="display: flex; align-items: center; gap: 5px;">
-                        <input type="checkbox" id="cfg-font-stroke-enable" checked onchange="updateOSMapStyles()" style="width:20px;">
-                        <input type="color" id="cfg-font-stroke-color" value="#000000" style="height:30px; width:30px; padding:0; border:none;" onchange="updateOSMapStyles()">
+                    <div class="report-info-box">
+                        <p><strong>Cliente:</strong> <span id="detail-client">Nome do Cliente</span></p>
+                        <p><strong>Tipo de Aplicação:</strong> <span id="detail-type" class="highlight-type">TIPO</span></p>
+                        <p><strong>Status:</strong> <span id="detail-status">STATUS</span></p>
+                    </div>
+
+                    <h4 style="border-bottom: 2px solid #ddd; padding-bottom: 5px; margin-top: 20px;">Áreas Selecionadas</h4>
+                    <table class="report-table">
+                        <thead>
+                            <tr>
+                                <th>Fazenda</th>
+                                <th>Nº</th>
+                                <th>Talhão / Área</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detail-items-list"></tbody>
+                    </table>
+
+                    <div class="report-footer">
+                        <p>Este documento é um comprovante digital de solicitação de serviço.</p>
+                        <p>Gerado pelo Sistema SolicitarOS</p>
                     </div>
                 </div>
-                
-                <div class="config-group">
-                    <label for="cfg-font-stroke-width">Espessura Cont.</label>
-                    <input type="number" id="cfg-font-stroke-width" value="1.5" step="0.1" onchange="updateOSMapStyles()">
+
+                <div class="modal-footer no-print" style="padding: 20px; border-top: 1px solid #eee; text-align: right;">
+                    <button class="btn btn-primary" onclick="printOrderReport()"><i class="fa-solid fa-print"></i> Imprimir / Salvar PDF</button>
                 </div>
-
-                <div class="config-group">
-                    <label for="cfg-font-line-height">Dist. Texto</label>
-                    <input type="number" id="cfg-font-line-height" value="0.5" step="0.1" onchange="updateOSMapStyles()">
+            </div>
+        </div>
+        
+        <div id="new-os-modal" class="modal-overlay hidden">
+            <div class="modal-box">
+                <div class="modal-header">
+                    <h3><i class="fa-solid fa-paper-plane"></i> Confirmar Solicitação</h3>
+                    <button onclick="closeOSModal()" class="close-btn">X</button>
                 </div>
-
-                <div class="separator"></div>
-
-                <div class="config-group"><label for="cfg-legend-size">Legenda Tam</label><input type="number" id="cfg-legend-size" value="12" step="0.1" onchange="updateOSMapStyles()"></div>
-                <div class="config-group"><label for="cfg-legend-spacing">Leg. Espaço</label><input type="number" id="cfg-legend-spacing" value="4" step="0.1" onchange="updateOSMapStyles()"></div>
-                <div class="config-group"><label for="cfg-legend-box-size">Leg. Box</label><input type="number" id="cfg-legend-box-size" value="15" step="1" onchange="updateOSMapStyles()"></div>
-                <div class="config-group"><label for="cfg-legend-stroke">Leg. Contorno</label><input type="number" id="cfg-legend-stroke" value="0.5" step="0.1" onchange="updateOSMapStyles()"></div>
-
-                <div class="separator"></div>
-
-                <div style="display: grid; gap: 8px;">
+                <div id="modal-content" style="padding: 20px;">
+                    <p id="os-summary-text" style="margin-bottom: 15px; color:var(--text-main);">
+                        Selecionado: 0 talhões
+                    </p>
                     
-                    <button class="btn" onclick="saveProjectJSON()" style="width:100%; background-color:#64748b; color:white;">
-                        <i class="fa-solid fa-floppy-disk"></i> Salvar Projeto (.json)
-                    </button>
+                    <label for="os-type-input" style="font-weight:bold; display:block; margin-bottom:5px;">Tipo de Aplicação</label>
+                    <select id="os-type-input">
+                        <option value="">Selecione...</option>
+                        <option value="Dessecação">Dessecação</option>
+                        <option value="Fungicida">Fungicida</option>
+                        <option value="Inseticida">Inseticida</option>
+                        <option value="Herbicida">Herbicida</option>
+                        <option value="Inibidor">Inibidor</option>
+                        <option value="Adubação Foliar">Adubação Foliar</option>
+                        <option value="Mapeamento">Mapeamento</option>
+                        <option value="Outros">Outros</option>
+                    </select>
 
-                    <button class="btn btn-accent" onclick="toggleOSPreviewMode()" style="width:100%;">
-                        <i class="fa-solid fa-eye"></i> Visualizar A0
-                    </button>
-
-                    <button class="btn btn-success" onclick="printOS()" style="width:100%;">
-                        <i class="fa-solid fa-file-pdf"></i> Gerar PDF
-                    </button>
+                    <div style="display:flex; gap:10px; margin-top:10px;">
+                        <button class="btn btn-danger" style="flex:1" onclick="closeOSModal()">Cancelar</button>
+                        <button class="btn btn-success" style="flex:1" onclick="finalizeOS()">Enviar Pedido</button>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div id="os-map-area">
-            <div id="os-map"></div>
-            <div id="os-map-title"></div>
-            <img id="os-map-logo" src="" alt="">
-            <div id="os-north-arrow">
-                <svg viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
-                    <g>
-                        <path d="M70,70 L95,45 L70,70" stroke="black" stroke-width="0.5" />
-                        <path d="M70,70 L95,95 L70,70" stroke="black" stroke-width="0.5" />
-                        <path d="M70,70 L45,95 L70,70" stroke="black" stroke-width="0.5" />
-                        <path d="M70,70 L45,45 L70,70" stroke="black" stroke-width="0.5" />
-                        <path d="M70,70 L95,45 L75,65 Z" fill="black" /> 
-                        <path d="M70,70 L95,45 L85,70 Z" fill="white" stroke="black" stroke-width="0.5"/>
-                        <path d="M70,70 L95,95 L85,70 Z" fill="black" /> 
-                        <path d="M70,70 L95,95 L75,85 Z" fill="white" stroke="black" stroke-width="0.5"/>
-                        <path d="M70,70 L45,95 L65,85 Z" fill="black" /> 
-                        <path d="M70,70 L45,95 L55,70 Z" fill="white" stroke="black" stroke-width="0.5"/>
-                        <path d="M70,70 L45,45 L55,70 Z" fill="black" /> 
-                        <path d="M70,70 L45,45 L65,55 Z" fill="white" stroke="black" stroke-width="0.5"/>
-                        <path d="M70,70 L70,15 L60,60 Z" fill="white" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L70,15 L80,60 Z" fill="black" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L125,70 L80,60 Z" fill="white" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L125,70 L80,80 Z" fill="black" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L70,125 L60,80 Z" fill="black" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L70,125 L80,80 Z" fill="white" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L15,70 L60,60 Z" fill="black" stroke="black" stroke-width="0.5"/> 
-                        <path d="M70,70 L15,70 L60,80 Z" fill="white" stroke="black" stroke-width="0.5"/> 
-                        
-                        <text x="70" y="14" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">N</text>
-                        <text x="70" y="138" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">S</text>
-                        <text x="132" y="76" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">L</text>
-                        <text x="8" y="76" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">O</text>
-                    </g>
-                </svg>
+        <div id="os-editor-overlay" class="hidden">
+            <div id="config-panel">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #ddd; padding-bottom:5px;">
+                    <strong>Configuração OS</strong>
+                    <div>
+                        <button onclick="toggleConfigBody()" style="background:#f39c12; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; margin-right:5px; font-weight:bold;" title="Minimizar Painel">_</button>
+                        <button onclick="closeOSEditor()" style="background:#c0392b; color:white; border:none; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold;" title="Fechar Editor">X</button>
+                    </div>
+                </div>
+
+                <div id="config-body">
+                    <div class="config-group">
+                        <label for="cfg-title-text">Título</label>
+                        <input type="text" id="cfg-title-text" placeholder="Titulo..." oninput="updateOSTitle()">
+                    </div>
+                    <div class="config-group">
+                        <label for="cfg-logo-file">Logo</label>
+                        <input type="file" id="cfg-logo-file" accept="image/*" onchange="updateOSLogo()">
+                    </div>
+                    
+                    <div class="separator"></div>
+                    
+                    <div class="config-group">
+                        <label for="cfg-stroke-color">Borda Cor</label>
+                        <input type="color" id="cfg-stroke-color" value="#000000" style="height:30px; padding:0; border:none;" onchange="updateOSMapStyles()">
+                    </div>
+                    <div class="config-group">
+                        <label for="cfg-stroke-width">Espessura</label>
+                        <input type="number" id="cfg-stroke-width" value="1" step="0.1" onchange="updateOSMapStyles()">
+                    </div>
+                    
+                    <div class="separator"></div>
+                    
+                    <div class="config-group">
+                        <label for="cfg-font-size">Fonte Tam</label>
+                        <input type="number" id="cfg-font-size" value="10" step="0.1" onchange="updateOSMapStyles()">
+                    </div>
+                    <div class="config-group">
+                        <label for="cfg-font-color">Fonte Cor</label>
+                        <input type="color" id="cfg-font-color" value="#ffffff" style="height:30px; padding:0; border:none;" onchange="updateOSMapStyles()">
+                    </div>
+                    <div class="config-group">
+                        <label for="cfg-font-stroke-enable">Contorno Tx</label>
+                        <div style="display: flex; align-items: center; gap: 5px;">
+                            <input type="checkbox" id="cfg-font-stroke-enable" checked onchange="updateOSMapStyles()" style="width:20px;">
+                            <input type="color" id="cfg-font-stroke-color" value="#000000" style="height:30px; width:30px; padding:0; border:none;" onchange="updateOSMapStyles()">
+                        </div>
+                    </div>
+                    <div class="config-group">
+                        <label for="cfg-font-stroke-width">Espessura Cont.</label>
+                        <input type="number" id="cfg-font-stroke-width" value="1.5" step="0.1" onchange="updateOSMapStyles()">
+                    </div>
+                    <div class="config-group">
+                        <label for="cfg-font-line-height">Dist. Texto</label>
+                        <input type="number" id="cfg-font-line-height" value="0.5" step="0.1" onchange="updateOSMapStyles()">
+                    </div>
+
+                    <div class="separator"></div>
+
+                    <div class="config-group"><label for="cfg-legend-size">Legenda Tam</label><input type="number" id="cfg-legend-size" value="12" step="0.1" onchange="updateOSMapStyles()"></div>
+                    <div class="config-group"><label for="cfg-legend-spacing">Leg. Espaço</label><input type="number" id="cfg-legend-spacing" value="4" step="0.1" onchange="updateOSMapStyles()"></div>
+                    <div class="config-group"><label for="cfg-legend-box-size">Leg. Box</label><input type="number" id="cfg-legend-box-size" value="15" step="1" onchange="updateOSMapStyles()"></div>
+                    <div class="config-group"><label for="cfg-legend-stroke">Leg. Contorno</label><input type="number" id="cfg-legend-stroke" value="0.5" step="0.1" onchange="updateOSMapStyles()"></div>
+
+                    <div class="separator"></div>
+
+                    <div style="display: grid; gap: 8px;">
+                        <button class="btn" onclick="saveProjectJSON()" style="width:100%; background-color:#64748b; color:white;">
+                            <i class="fa-solid fa-floppy-disk"></i> Salvar Projeto (.json)
+                        </button>
+
+                        <button class="btn btn-accent" onclick="toggleOSPreviewMode()" style="width:100%;">
+                            <i class="fa-solid fa-eye"></i> Visualizar A0
+                        </button>
+
+                        <button class="btn btn-success" onclick="printOS()" style="width:100%;">
+                            <i class="fa-solid fa-file-pdf"></i> Gerar PDF
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div id="os-scale-container"></div>
-            <div id="os-map-legend"><h4>LEGENDA</h4><div id="os-legend-content"></div></div>
+
+            <div id="os-map-area">
+                <div id="os-map"></div>
+                <div id="os-map-title"></div>
+                <img id="os-map-logo" src="" alt="">
+                <div id="os-north-arrow">
+                    <svg viewBox="0 0 140 140" xmlns="http://www.w3.org/2000/svg">
+                        <g>
+                            <path d="M70,70 L95,45 L70,70" stroke="black" stroke-width="0.5" />
+                            <path d="M70,70 L95,95 L70,70" stroke="black" stroke-width="0.5" />
+                            <path d="M70,70 L45,95 L70,70" stroke="black" stroke-width="0.5" />
+                            <path d="M70,70 L45,45 L70,70" stroke="black" stroke-width="0.5" />
+                            <path d="M70,70 L95,45 L75,65 Z" fill="black" /> 
+                            <path d="M70,70 L95,45 L85,70 Z" fill="white" stroke="black" stroke-width="0.5"/>
+                            <path d="M70,70 L95,95 L70,70" fill="black" /> 
+                            <path d="M70,70 L95,95 L75,85 Z" fill="white" stroke="black" stroke-width="0.5"/>
+                            <path d="M70,70 L45,95 L65,85 Z" fill="black" /> 
+                            <path d="M70,70 L45,95 L55,70 Z" fill="white" stroke="black" stroke-width="0.5"/>
+                            <path d="M70,70 L45,45 L55,70 Z" fill="black" /> 
+                            <path d="M70,70 L45,45 L65,55 Z" fill="white" stroke="black" stroke-width="0.5"/>
+                            <path d="M70,70 L70,15 L60,60 Z" fill="white" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L70,15 L80,60 Z" fill="black" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L125,70 L80,60 Z" fill="white" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L125,70 L80,80 Z" fill="black" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L70,125 L60,80 Z" fill="black" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L70,125 L80,80 Z" fill="white" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L15,70 L60,60 Z" fill="black" stroke="black" stroke-width="0.5"/> 
+                            <path d="M70,70 L15,70 L60,80 Z" fill="white" stroke="black" stroke-width="0.5"/> 
+                            
+                            <text x="70" y="14" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">N</text>
+                            <text x="70" y="138" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">S</text>
+                            <text x="132" y="76" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">L</text>
+                            <text x="8" y="76" text-anchor="middle" font-family="'Times New Roman', serif" font-weight="bold" font-size="16" fill="black">O</text>
+                        </g>
+                    </svg>
+                </div>
+                <div id="os-scale-container"></div>
+                <div id="os-map-legend"><h4>LEGENDA</h4><div id="os-legend-content"></div></div>
+            </div>
         </div>
+
     </div>
 
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>

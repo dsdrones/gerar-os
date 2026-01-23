@@ -115,6 +115,13 @@ function initMap() {
 
     // Roda uma vez logo que abre para garantir o estado inicial
     checkZoomLevel();
+
+    // ====================================================
+    // ADICIONE ESTAS 3 LINHAS AQUI NO FINAL
+    // ====================================================
+    addLocationControl();                      // 1. Cria o botão no mapa
+    map.on('locationfound', onLocationFound);  // 2. O que fazer se achar o GPS
+    map.on('locationerror', onLocationError);  // 3. O que fazer se der erro
 }
 
 function loadClientFarms(uid) {
@@ -131,7 +138,7 @@ function loadClientFarms(uid) {
         const bounds = L.latLngBounds();
         let hasLayers = false;
 
-        // --- OTIMIZAÇÃO 1: CRIAR FRAGMENTO NA MEMÓRIA ---
+        // --- OTIMIZAÇÃO: CRIAR FRAGMENTO NA MEMÓRIA ---
         // Em vez de colocar na tela item por item, colocamos nessa "caixa virtual"
         const fragment = document.createDocumentFragment(); 
         
@@ -139,6 +146,7 @@ function loadClientFarms(uid) {
             const f = doc.data();
             const fNum = String(f.numero).padStart(2,'0');
             
+            // Cria os elementos usando DOM (muito mais rápido que innerHTML repetido)
             const groupDiv = document.createElement('div');
             groupDiv.className = 'farm-group'; 
 
@@ -152,6 +160,7 @@ function loadClientFarms(uid) {
             const contentDiv = document.createElement('div');
             contentDiv.className = 'farm-content';
 
+            // Evento de abrir/fechar
             headerDiv.addEventListener('click', () => {
                 groupDiv.classList.toggle('open');
             });
@@ -176,9 +185,9 @@ function loadClientFarms(uid) {
                         data-plot-name="${displayName}"
                         data-plot-area="${areaHa}"> <span>${displayName}</span>`;
                     
-                    // --- OTIMIZAÇÃO 2: SmoothFactor ---
+                    // Mapa
                     const poly = L.geoJSON(geoData, {
-                        smoothFactor: 1.5, // Deixa o desenho mais leve
+                        smoothFactor: 2.0, // Aumentei de 1.5 para 2.0 (Desenha menos pontos, mais leve)
                         style: {color:'#ffffff', weight:2, fillOpacity:0.1}
                     }).addTo(map);
                     
@@ -191,7 +200,7 @@ function loadClientFarms(uid) {
                     bounds.extend(poly.getBounds());
                     hasLayers = true;
                     
-                    // Lógica de interação (Checkbox e clique)
+                    // Checkbox interação
                     const checkbox = row.querySelector('input');
                     
                     checkbox.addEventListener('change', e => {
@@ -203,7 +212,7 @@ function loadClientFarms(uid) {
                             row.classList.remove('active');
                         }
                         
-                        // Atualiza botão flutuante
+                        // Atualiza FAB (Botão flutuante)
                         const totalSelected = document.querySelectorAll('.chk-export:checked').length;
                         const fab = document.getElementById('fab-os-mobile');
                         const fabCount = document.getElementById('fab-count');
@@ -215,13 +224,18 @@ function loadClientFarms(uid) {
                         }
                     });
 
-                    row.addEventListener('click', (e) => {
-                        if(e.target.type !== 'checkbox') {
-                            map.fitBounds(poly.getBounds());
-                            if(window.innerWidth <= 768) toggleMobileSidebar();
-                        }
-                    });
+                    // NOVO
+row.addEventListener('click', (e) => {
+    if(e.target.type !== 'checkbox') {
+        // 1. Centraliza a fazenda
+        map.fitBounds(poly.getBounds());
+        
+        // 2. Troca para a aba do mapa automaticamente
+        switchClientTab('tab-mapa');
+    }
+});
 
+                    // Clique no mapa
                     poly.on('click', () => {
                         checkbox.checked = !checkbox.checked;
                         checkbox.dispatchEvent(new Event('change'));
@@ -236,7 +250,7 @@ function loadClientFarms(uid) {
             groupDiv.appendChild(headerDiv);
             groupDiv.appendChild(contentDiv);
             
-            // --- AQUI ESTÁ A DIFERENÇA: Adiciona ao Fragmento, não à tela ---
+            // Adiciona na "caixa virtual"
             fragment.appendChild(groupDiv);
         });
         
@@ -504,20 +518,21 @@ function updateFileName(input) {
 function initAdminMap() { 
     if(adminMap) return; 
     
-    adminMap = L.map('admin-map').setView([-14,-52],4); 
+    adminMap = L.map('admin-map', {
+        zoomControl: true,
+        preferCanvas: true // <--- ISSO É O SEGREDO! Usa a GPU do celular.
+    }).setView([-14,-52],4); 
     
     L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{
         maxZoom:20,
         subdomains:['mt0','mt1','mt2','mt3']
     }).addTo(adminMap); 
-    
-    // --- LÓGICA DE ZOOM INTELIGENTE ---
+
+    // Lógica de Zoom Inteligente
     adminMap.on('zoomend', function() {
         const zoom = adminMap.getZoom();
         const mapDiv = document.getElementById('admin-map');
-        
-        // Se o zoom for menor que 13 (muito alto/longe), esconde os textos
-        if (zoom < 16) { // ZOM PRA VER OS NOMES
+        if (zoom < 13) {
             mapDiv.classList.add('hide-labels');
         } else {
             mapDiv.classList.remove('hide-labels');
@@ -1558,6 +1573,140 @@ function updateOfflineBadge() {
         badge.style.display = 'flex';
     } else {
         if(badge) badge.style.display = 'none';
+    }
+}
+
+// === NAVEGAÇÃO INFERIOR (App Cliente) ===
+
+// === NAVEGAÇÃO INFERIOR (App Cliente) ===
+
+function switchClientTab(tabId) {
+    // 1. Esconde todas as abas
+    document.querySelectorAll('.client-tab-content').forEach(tab => {
+        tab.classList.remove('active');
+    });
+
+    // 2. Desativa todos os botões de baixo
+    document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.classList.remove('active');
+    });
+
+    // 3. Mostra a aba escolhida
+    const targetTab = document.getElementById(tabId);
+    if(targetTab) targetTab.classList.add('active');
+
+    // 4. Ativa o botão correspondente
+    const navButtons = document.querySelectorAll('.nav-item');
+    if(tabId === 'tab-lista') navButtons[0].classList.add('active');
+    if(tabId === 'tab-mapa') navButtons[1].classList.add('active');
+    if(tabId === 'tab-perfil') navButtons[2].classList.add('active');
+
+    // 5. LÓGICA DO BOTÃO FLUTUANTE (FAB)
+    const fab = document.getElementById('fab-os-mobile');
+    const totalSelected = document.querySelectorAll('.chk-export:checked').length;
+
+    if (tabId === 'tab-perfil') {
+        // Se for perfil, esconde o botão na marra, mesmo se tiver seleção
+        fab.style.display = 'none'; 
+    } else {
+        // Se for Lista ou Mapa, volta a mostrar (mas só se tiver itens selecionados)
+        fab.style.display = 'flex'; 
+        
+        // Verifica se deve aparecer ou ficar escondido (efeito de subir/descer)
+        if (totalSelected > 0) {
+            fab.classList.add('visible');
+        } else {
+            fab.classList.remove('visible');
+        }
+    }
+
+    // 6. Recalcula tamanho do mapa se necessário
+    if(tabId === 'tab-mapa' && map) {
+        setTimeout(() => { map.invalidateSize(); }, 200);
+    }
+}
+
+
+// Variável global para guardar a bolinha azul
+let userLocationMarker = null;
+let userLocationCircle = null;
+
+// --- FUNÇÃO DE GPS ---
+function addLocationControl() {
+    // Cria um controle customizado do Leaflet
+    const LocationControl = L.Control.extend({
+        options: { position: 'bottomright' }, // Posição: Canto inferior direito
+
+        onAdd: function(map) {
+            const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+            const button = L.DomUtil.create('a', 'leaflet-control-locate', container);
+            button.innerHTML = '<i class="fa-solid fa-crosshairs"></i>';
+            button.href = "#";
+            button.title = "Minha Localização";
+
+            // Impede o clique de passar pro mapa
+            L.DomEvent.disableClickPropagation(button);
+
+            // Ao clicar no botão
+            L.DomEvent.on(button, 'click', function(e) {
+                L.DomEvent.stop(e);
+                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; // Ícone carregando
+                button.classList.add('locating-pulse');
+                
+                // Pede a localização
+                map.locate({setView: true, maxZoom: 16, enableHighAccuracy: true});
+            });
+
+            return container;
+        }
+    });
+
+    // Adiciona o botão no mapa do cliente
+    if(map) map.addControl(new LocationControl());
+}
+
+// --- EVENTOS DO LEAFLET (Quando acha ou erra) ---
+
+// 1. Se achar a localização
+function onLocationFound(e) {
+    const radius = e.accuracy / 2;
+    const btnLocate = document.querySelector('.leaflet-control-locate');
+    
+    // Restaura o ícone do botão
+    if(btnLocate) {
+        btnLocate.innerHTML = '<i class="fa-solid fa-location-arrow" style="color:#2563eb"></i>';
+        btnLocate.classList.remove('locating-pulse');
+    }
+
+    // Remove marcador anterior se existir
+    if (userLocationMarker) map.removeLayer(userLocationMarker);
+    if (userLocationCircle) map.removeLayer(userLocationCircle);
+
+    // Adiciona bolinha azul e círculo de precisão
+    userLocationMarker = L.marker(e.latlng, {
+        icon: L.divIcon({
+            className: 'custom-div-icon',
+            html: "<div style='background-color:#4285F4; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);'></div>",
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+        })
+    }).addTo(map).bindPopup("Você está aqui (Precisão: " + Math.round(radius) + "m)").openPopup();
+
+    userLocationCircle = L.circle(e.latlng, radius, {
+        color: '#4285F4',
+        fillColor: '#4285F4',
+        fillOpacity: 0.1,
+        weight: 1
+    }).addTo(map);
+}
+
+// 2. Se der erro (ex: sem GPS)
+function onLocationError(e) {
+    alert("Não foi possível obter sua localização. Verifique se o GPS está ativado.");
+    const btnLocate = document.querySelector('.leaflet-control-locate');
+    if(btnLocate) {
+        btnLocate.innerHTML = '<i class="fa-solid fa-crosshairs"></i>';
+        btnLocate.classList.remove('locating-pulse');
     }
 }
 

@@ -21,6 +21,37 @@
     --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 
+/* ================================================================= */
+/* AJUSTES PARA SENSAÇÃO DE APP NATIVO (MOBILE)                      */
+/* ================================================================= */
+
+/* 1. Remove o "flash azul" ao clicar em botões no Android/Chrome */
+* {
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* 2. Impede que o usuário selecione textos da interface (como menus) */
+.nav-item, .btn, .farm-header, .profile-card, .mobile-header h2 {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* 3. Esconde a barra de rolagem (Scrollbar) mas mantém a rolagem funcionando */
+/* Isso deixa a lista muito mais limpa no celular */
+#farms-list::-webkit-scrollbar, 
+#client-content-area::-webkit-scrollbar,
+#config-panel::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+/* 4. Proteção para celulares com "Notch" ou Barra de Gestos inferior */
+.bottom-navbar {
+    /* Adiciona um preenchimento extra se o celular tiver aquela barra preta embaixo */
+    padding-bottom: env(safe-area-inset-bottom); 
+    height: calc(60px + env(safe-area-inset-bottom));
+}
+
 /* Reset básico (tira margens padrão dos navegadores) */
 * { box-sizing: border-box; outline: none; }
 
@@ -204,12 +235,20 @@ input:focus, select:focus {
     flex-shrink: 0;
 }
 
+/* --- CORREÇÃO DA LISTA NO NOVO LAYOUT --- */
 #farms-list {
-    flex: 1; /* Ocupa espaço do meio */
-    overflow-y: auto; /* Rola se a lista for grande */
+    width: 100%;
+    height: auto;       /* Deixa a lista crescer livremente */
     padding: 15px;
-    background: #f8fafc;
-    height: 0; /* Truque Flexbox para scroll funcionar */
+    padding-bottom: 80px; /* Espaço extra no final p/ não ficar atrás do menu */
+    background: transparent; /* Usa a cor de fundo da tela principal */
+    overflow: visible;  /* Remove a rolagem interna (usa a da tela toda) */
+    display: block;     
+}
+
+/* Garante que no modo escuro ele não pinte o fundo de cor diferente */
+body.dark-mode #farms-list {
+    background-color: transparent;
 }
 
 #download-area {
@@ -803,7 +842,7 @@ body.dark-mode select:focus {
 
 #fab-os-mobile {
     position: fixed;
-    bottom: 30px;
+    bottom: 70px;
     left: 50%;
     /* Truque: Começa deslocado para baixo (escondido) */
     transform: translateX(-50%) translateY(150px); 
@@ -1371,4 +1410,169 @@ body.dark-mode .search-box-wrapper {
 .btn-icon-save:hover {
     background: #16a34a;
     transform: scale(1.1);
+}
+
+
+/* ========================================= */
+/* NAVEGAÇÃO MOBILE (NAVBAR)                 */
+/* ========================================= */
+
+.bottom-navbar {
+    height: 60px;
+    background: white;
+    border-top: 1px solid #ddd;
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+    z-index: 9999;
+}
+
+.nav-item {
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8; /* Cinza desativado */
+    font-size: 10px;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+}
+
+.nav-item i {
+    font-size: 20px;
+    transition: transform 0.2s;
+}
+
+.nav-item.active {
+    color: #2563eb; /* Azul ativo (Cor da sua marca) */
+    font-weight: bold;
+}
+
+.nav-item.active i {
+    transform: translateY(-2px);
+}
+
+/* Telas (Abas) */
+.client-tab-content {
+    display: none; /* Esconde todas por padrão */
+    height: 100%;
+    width: 100%;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+.client-tab-content.active {
+    display: block; /* Mostra só a ativa */
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Estilo da Tela de Perfil */
+.profile-card {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+.profile-avatar {
+    width: 60px; height: 60px; background: #e0f2fe; color: #0284c7;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin: 0 auto 10px auto;
+}
+.profile-menu { display: flex; flex-direction: column; gap: 10px; }
+.profile-btn {
+    padding: 15px; background: white; border: 1px solid #eee;
+    border-radius: 8px; text-align: left; font-size: 14px;
+    display: flex; align-items: center; gap: 10px; color: #333;
+}
+.profile-btn.logout { color: #ef4444; border-color: #fee2e2; background: #fef2f2; }
+
+/* Header Mobile */
+.mobile-header {
+    background: white; padding: 15px;
+    border-bottom: 1px solid #eee;
+    position: sticky; top: 0; z-index: 100;
+}
+.mobile-header h2 { margin: 0; font-size: 18px; }
+
+/* Ajuste Dark Mode (Se você usar) */
+body.dark-mode .bottom-navbar,
+body.dark-mode .mobile-header,
+body.dark-mode .profile-card,
+body.dark-mode .profile-btn {
+    background: #1e293b; border-color: #334155; color: white;
+}
+body.dark-mode .nav-item.active { color: #38bdf8; }
+
+/* ========================================= */
+/* CORREÇÃO DO FUNDO DA LISTA (DARK MODE)    */
+/* ========================================= */
+
+/* Cor padrão (Dia/Claro) */
+#client-content-area {
+    background-color: #f8f9fa;
+}
+
+/* Cor quando estiver no Modo Escuro */
+body.dark-mode #client-content-area {
+    background-color: #0f172a; /* Azul bem escuro, quase preto */
+}
+
+/* Ajuste também para os cartões da fazenda ficarem bonitos no escuro */
+body.dark-mode .farm-header {
+    background-color: #1e293b; /* Cinza azulado escuro */
+    color: white;              /* Texto branco */
+    border-bottom: 1px solid #334155;
+}
+
+/* Se houver talhões visíveis, ajusta a cor deles também */
+body.dark-mode .plot-item {
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border-bottom: 1px solid #334155;
+}
+
+body.dark-mode .plot-item:hover {
+    background-color: #334155;
+}
+
+
+/* BOTÃO DE LOCALIZAÇÃO (GPS) */
+.leaflet-control-locate {
+    background-color: #fff;
+    border-bottom: 1px solid #ccc;
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    border-radius: 4px;
+    cursor: pointer;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+    color: #333;
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.leaflet-control-locate:hover {
+    background-color: #f4f4f4;
+    color: #000;
+}
+/* Animação pulsando quando estiver buscando */
+@keyframes pulse-blue {
+    0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+.locating-pulse {
+    animation: pulse-blue 1.5s infinite;
+    color: #2563eb;
 }
