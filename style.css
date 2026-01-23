@@ -1807,3 +1807,26 @@ body {
     margin: 0 !important;
     pointer-events: none;
 }
+
+/* ================================================================= */
+/* OTIMIZAÇÃO DE PERFORMANCE DO MAPA (ANTI-LAG)                      */
+/* ================================================================= */
+
+/* Força aceleração de hardware no container do mapa */
+.leaflet-container {
+    will-change: transform;       /* Avisa o navegador para preparar a GPU */
+    background: #dddddd;          /* Cor de fundo enquanto carrega a imagem */
+    -webkit-overflow-scrolling: touch; /* Rolagem nativa suave no iOS/Android */
+}
+
+/* Evita que o navegador tente selecionar texto/imagens enquanto você dá zoom */
+.leaflet-interactive {
+    touch-action: none;
+}
+
+/* Deixa a animação dos Tiles (quadrados do mapa) mais suave */
+.leaflet-fade-anim .leaflet-tile,
+.leaflet-zoom-anim .leaflet-zoom-animated {
+    will-change: opacity, transform;
+    transition: transform 0.25s cubic-bezier(0,0,0.25,1);
+}

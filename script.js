@@ -93,10 +93,22 @@ function updateThemeIcons(isDark) { document.querySelectorAll('.fa-moon, .fa-sun
 function initMap() {
     if(map) return;
     
-    // Configuração Inicial do Mapa
+    // Configuração Inicial do Mapa (OTIMIZADA PARA MOBILE)
     map = L.map('map', {
-        zoomControl: false,
-        preferCanvas: true // <--- AQUI ESTÁ O MODO TURBO ATIVADO
+        zoomControl: false,       // Removemos o original pois já temos botões personalizados
+        
+        // 1. PERFORMANCE (Evita travar o celular)
+        preferCanvas: true,       // Usa a GPU para desenhar as linhas
+        markerZoomAnimation: false, // Desativa animações pesadas de marcadores
+        
+        // 2. SUAVIDADE DO ZOOM (Resolve o "Zoom Grosseiro")
+        zoomSnap: 0.1,            // Permite parar o zoom em níveis quebrados (ex: 14.3)
+        zoomDelta: 0.5,           // Os botões + e - mudam o zoom mais devagar
+        wheelPxPerZoomLevel: 120, // Ajusta a sensibilidade do scroll/dedo
+        
+        // 3. Limites
+        minZoom: 4,
+        maxZoom: 22
     }).setView([-14.2350, -51.9253], 4);
     
     L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{
@@ -104,14 +116,15 @@ function initMap() {
         subdomains:['mt0','mt1','mt2','mt3']
     }).addTo(map);
     
+    // Adiciona os botões de Zoom manualmente no canto inferior
     L.control.zoom({position: 'bottomright'}).addTo(map);
 
     // --- NOVA LÓGICA INTELIGENTE DE ZOOM ---
     function checkZoomLevel() {
+        // ... (O resto da sua função continua igual daqui para baixo)
         const currentZoom = map.getZoom();
         const mapElement = document.getElementById('map');
         
-        // Mantive o seu ajuste de 16
         if (currentZoom < 16) {
             mapElement.classList.add('hide-labels');
         } else {
@@ -119,18 +132,12 @@ function initMap() {
         }
     }
 
-    // Ouve o evento de zoom (cada vez que muda o zoom, roda a verificação)
     map.on('zoomend', checkZoomLevel);
-
-    // Roda uma vez logo que abre para garantir o estado inicial
     checkZoomLevel();
 
-    // ====================================================
-    // ADICIONE ESTAS 3 LINHAS AQUI NO FINAL
-    // ====================================================
-    addLocationControl();                      // 1. Cria o botão no mapa
-    map.on('locationfound', onLocationFound);  // 2. O que fazer se achar o GPS
-    map.on('locationerror', onLocationError);  // 3. O que fazer se der erro
+    addLocationControl();
+    map.on('locationfound', onLocationFound);
+    map.on('locationerror', onLocationError);
 }
 
 function loadClientFarms(uid) {
