@@ -1712,68 +1712,101 @@ function onLocationError(e) {
 }
 
 // =================================================================
-// LÓGICA DA FOTO DE PERFIL (COM REDIMENSIONAMENTO)
+// LÓGICA DA FOTO DE PERFIL (SALVA NO BANCO DE DADOS - FIRESTORE)
 // =================================================================
 
+// 1. Salvar Foto como Texto no Banco de Dados
 function saveProfilePhoto(input) {
+    const user = firebase.auth().currentUser;
+    
+    if (!user) {
+        alert("Faça login para mudar a foto.");
+        return;
+    }
+
     if (input.files && input.files[0]) {
         const file = input.files[0];
-        const reader = new FileReader();
+        
+        // Mostra ícone carregando
+        const iconElement = document.getElementById('profile-icon');
+        if(iconElement) iconElement.className = "fa-solid fa-spinner fa-spin";
 
+        const reader = new FileReader();
         reader.onload = function(e) {
-            // Cria uma imagem na memória para podermos diminuir ela
             const img = new Image();
             img.src = e.target.result;
             
             img.onload = function() {
-                // Configura um Canvas para redimensionar
+                // --- COMPRESSÃO OBRIGATÓRIA ---
+                // O Firestore tem limite de tamanho, então precisamos reduzir bem a foto
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Define tamanho máximo (ex: 300px). 
-                // Isso faz a foto cair de 5MB para 50KB!
-                const maxWidth = 300;
+                // Tamanho fixo de 200px (Suficiente para perfil e fica leve)
+                const maxWidth = 200; 
                 const scaleFactor = maxWidth / img.width;
                 
                 canvas.width = maxWidth;
                 canvas.height = img.height * scaleFactor;
                 
-                // Desenha a imagem pequena no canvas
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
-                // Converte para texto leve (JPEG qualidade 0.7)
-                const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                // Converte para texto Base64 (Qualidade 0.6)
+                const base64String = canvas.toDataURL('image/jpeg', 0.6);
                 
-                // Agora sim, salva no LocalStorage sem travar o celular
-                try {
-                    localStorage.setItem('user_avatar', compressedBase64);
+                // --- SALVA NO FIRESTORE (DB) ---
+                // Em vez de salvar arquivo, salvamos esse texto gigante no cadastro do usuário
+                db.collection('users').doc(user.uid).set({
+                    avatar: base64String
+                }, { merge: true }) // merge: true garante que não apague outros dados (nome, email)
+                .then(() => {
+                    console.log("Foto salva no banco de dados!");
                     loadProfilePhoto(); // Atualiza a tela
-                } catch (err) {
-                    alert("Erro ao salvar: Memória cheia. Tente uma foto menor.");
-                }
+                    alert("Foto atualizada em todos os dispositivos!");
+                })
+                .catch((error) => {
+                    console.error("Erro ao salvar:", error);
+                    alert("Erro ao salvar foto.");
+                    if(iconElement) iconElement.className = "fa-solid fa-user";
+                });
             }
         }
-        
         reader.readAsDataURL(file);
     }
 }
 
-// 2. Função que carrega a foto salva (se existir)
+// 2. Carregar Foto do Banco de Dados
 function loadProfilePhoto() {
-    const savedImage = localStorage.getItem('user_avatar');
-    const imgElement = document.getElementById('profile-image');
-    const iconElement = document.getElementById('profile-icon');
-    
-    if (savedImage && imgElement && iconElement) {
-        // Se tem foto salva: Mostra a IMG e esconde o ÍCONE
-        imgElement.src = savedImage;
-        imgElement.style.display = 'block';
-        iconElement.style.display = 'none';
-    }
+    firebase.auth().onAuthStateChanged((user) => {
+        if (user) {
+            const imgElement = document.getElementById('profile-image');
+            const iconElement = document.getElementById('profile-icon');
+            
+            // Busca os dados do usuário no Firestore
+            db.collection('users').doc(user.uid).onSnapshot((doc) => {
+                if (doc.exists && doc.data().avatar) {
+                    // Se tiver foto salva no banco
+                    const photoBase64 = doc.data().avatar;
+                    
+                    if (imgElement && iconElement) {
+                        imgElement.src = photoBase64;
+                        imgElement.style.display = 'block';
+                        iconElement.style.display = 'none';
+                    }
+                } else {
+                    // Se não tiver foto
+                    if(imgElement) imgElement.style.display = 'none';
+                    if(iconElement) {
+                        iconElement.style.display = 'flex'; // Flex para centralizar
+                        iconElement.className = "fa-solid fa-user";
+                    }
+                }
+            });
+        }
+    });
 }
 
-// 3. Importante: Tenta carregar a foto assim que o app abre
-// Adicione esta linha no final do arquivo, fora de qualquer função
+// Inicializa
 document.addEventListener('DOMContentLoaded', loadProfilePhoto);
 
 // 4. "Ouvintes" de Conexão
