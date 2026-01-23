@@ -1,4 +1,6 @@
-// === CONFIGURAÇÃO ===
+// ============================================
+// CONFIGURAÇÃO DO FIREBASE
+// ============================================
 const firebaseConfig = {
     apiKey: "AIzaSyBydEyUgO4QSwB6o3OxHn33vp22XFc5tKU",
     authDomain: "sistemafazendas.firebaseapp.com",
@@ -19,25 +21,20 @@ const db = firebase.firestore();
 const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
 const secondaryAuth = secondaryApp.auth();
 
-// --- NOVO CÓDIGO DE MODO OFFLINE (SEM AVISO AMARELO) ---
-try {
-    // Tenta configurar o cache do jeito novo (Firebase 10+)
-    db.settings({
-        cache: firebase.firestore.persistentLocalCache({
-            tabManager: firebase.firestore.persistentMultipleTabManager()
-        })
-    });
-} catch (err) {
-    // Se der erro (ou for navegador antigo), usa o jeito clássico
-    console.log("Tentando persistência clássica...");
-    db.enablePersistence().catch((err) => {
+// --- ATIVAÇÃO DO MODO OFFLINE (CLÁSSICO) ---
+// Configura o cache para funcionar sem internet
+db.enablePersistence({ synchronizeTabs: true })
+    .then(() => {
+        console.log("Modo Offline ativado com sucesso!");
+    })
+    .catch((err) => {
         if (err.code == 'failed-precondition') {
-            console.log("Múltiplas abas abertas atrapalham a persistência.");
+            console.log("Aviso: Múltiplas abas abertas. O modo offline funciona melhor em uma só aba.");
         } else if (err.code == 'unimplemented') {
-            console.log("O navegador não suporta persistência.");
+            console.log("Aviso: Este navegador não suporta salvamento offline.");
         }
     });
-}
+
 // Variáveis Globais
 let map, adminMap, osMap; 
 let osLayers = L.layerGroup();
