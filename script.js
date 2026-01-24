@@ -150,11 +150,10 @@ function loadClientFarms(uid) {
     const list = document.getElementById('farms-list');
     list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'><i class='fa-solid fa-circle-notch fa-spin'></i> Carregando mapas...</div>";
     
-    // Limpa clusters antigos se houver
+    // Limpeza geral
     if(farmClusters) farmClusters.clearLayers();
-    
-    // Limpa polígonos antigos desenhados direto no mapa (se houver)
     map.eachLayer(layer => {
+        // Remove polígonos antigos, mas mantém o TileLayer (Google)
         if (layer instanceof L.Path && !layer._url) map.removeLayer(layer);
     });
 
@@ -172,41 +171,45 @@ function loadClientFarms(uid) {
             const f = doc.data();
             const fNum = String(f.numero).padStart(2,'0');
             
-            // --- CRIAÇÃO DA LISTA (HTML) ---
+            // --- ESTRUTURA DA LISTA ---
             const groupDiv = document.createElement('div');
             groupDiv.className = 'farm-group'; 
+            
             const headerDiv = document.createElement('div');
             headerDiv.className = 'farm-header';
             headerDiv.innerHTML = `<span>F${fNum} - ${f.nome}</span><i class="fa-solid fa-chevron-down farm-arrow"></i>`;
+            
             const contentDiv = document.createElement('div');
             contentDiv.className = 'farm-content';
 
-            headerDiv.addEventListener('click', () => { groupDiv.classList.toggle('open'); });
+            // CORREÇÃO 1: Evento de abrir a lista simplificado e direto
+            headerDiv.onclick = function() {
+                groupDiv.classList.toggle('open');
+            };
 
             const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
 
             sortedTalhoes.forEach(t => {
                 try {
                     const geoData = (typeof t.geometry === 'string') ? JSON.parse(t.geometry) : t.geometry;
-                    const displayName = t.nomeOriginal && t.nomeOriginal.length > 0 ? t.nomeOriginal : `Talhão ${t.numero}`;
+                    const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
                     const areaM2 = turf.area(geoData);
                     const areaHa = (areaM2 / 10000).toFixed(2); 
 
-                    // ... (seu código anterior de geoData, displayName, etc) ...
-
-                    // 1. CRIA O POLÍGONO (Mas NÃO adiciona ao mapa ainda!)
-                    // Removemos o .addTo(map) daqui
+                    // --- MAPA ---
+                    
+                    // 1. Polígono (Sempre visível no mapa, mas leve)
                     const poly = L.geoJSON(geoData, {
-                        smoothFactor: 5.0, 
+                        smoothFactor: 5.0, // Anti-lag
                         style: {color:'#ffffff', weight:2, fillOpacity:0.1}
-                    });
+                    }).addTo(map); // <--- VOLTOU A SER ADICIONADO DIRETO AO MAPA
 
                     bounds.extend(poly.getBounds());
-                    
-                    // 2. CRIA O MARCADOR DO NOME (Rótulo)
+
+                    // 2. Marcador do Nome (Vai para o Cluster)
                     const center = turf.centerOfMass(geoData);
                     const latlng = [center.geometry.coordinates[1], center.geometry.coordinates[0]];
-
+                    
                     const labelIcon = L.divIcon({ 
                         className: 'client-plot-label', 
                         html: `<div style="text-align:center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000;">
@@ -218,48 +221,67 @@ function loadClientFarms(uid) {
                     });
 
                     const labelMarker = L.marker(latlng, { icon: labelIcon });
-                    
-                    // 3. O PULO DO GATO (VINCULAR POLÍGONO AO MARCADOR)
-                    // Se o Cluster mostrar o marcador (add), mostramos o polígono.
-                    // Se o Cluster esconder o marcador (remove), escondemos o polígono.
-                    
-                    labelMarker.on('add', () => {
-                        poly.addTo(map);
-                    });
+                    farmClusters.addLayer(labelMarker); // Só o nome é clusterizado
 
-                    labelMarker.on('remove', () => {
-                        poly.remove();
-                    });
+                    // --- LISTA ---
+                    const row = document.createElement('div');
+                    row.className = 'plot-item';
+                    row.innerHTML = `<input type="checkbox" class="chk-export" 
+                        data-farm-id="${doc.id}" data-farm-name="${f.nome}" data-farm-num="${f.numero}"
+                        data-plot-name="${displayName}" data-plot-area="${areaHa}"> <span>${displayName}</span>`;
                     
-                    // 4. ADICIONA SÓ O MARCADOR AO CLUSTER
-                    // O polígono vai "de carona" automaticamente pelos eventos acima
-                    farmClusters.addLayer(labelMarker);
+                    const checkbox = row.querySelector('input');
 
-                    // ... (seu código de checkbox e interação continua igual abaixo) ...
-                    
-                    // IMPORTANTE: Ajuste o clique da lista para dar zoom no marcador (que controla o polígono)
+                    // CORREÇÃO 2: Lógica de Seleção Unificada
+                    // Criamos uma função única para mudar o estado, usada tanto pelo clique no mapa quanto no checkbox
+                    function toggleSelection(forceState) {
+                        const newState = (typeof forceState === 'boolean') ? forceState : !checkbox.checked;
+                        checkbox.checked = newState;
+
+                        if(newState) {
+                            poly.setStyle({color: '#ffcc00', weight: 3, fillOpacity: 0.6});
+                            row.classList.add('active');
+                        } else {
+                            poly.setStyle({color: '#ffffff', weight: 2, fillOpacity: 0.1});
+                            row.classList.remove('active');
+                        }
+
+                        // Atualiza botão flutuante
+                        const total = document.querySelectorAll('.chk-export:checked').length;
+                        const fab = document.getElementById('fab-os-mobile');
+                        if(fab) {
+                             document.getElementById('fab-count').innerText = total;
+                             if(total > 0) fab.classList.add('visible'); else fab.classList.remove('visible');
+                        }
+                    }
+
+                    // Evento Checkbox da Lista
+                    checkbox.addEventListener('change', () => toggleSelection(checkbox.checked));
+
+                    // Evento Clique na Linha da Lista (Zoom)
                     row.addEventListener('click', (e) => {
-                        if(e.target.type !== 'checkbox') {
-                            // Zoom para exibir o marcador (o cluster vai se abrir e mostrar o polígono)
-                            farmClusters.zoomToShowLayer(labelMarker, () => {
-                                // Opcional: Centraliza e abre popup se quiser
-                                map.panTo(latlng);
-                            }); 
+                        if(e.target !== checkbox) {
+                            map.fitBounds(poly.getBounds());
+                            // Tenta abrir o cluster para mostrar o nome
+                            farmClusters.zoomToShowLayer(labelMarker, () => {});
                             switchClientTab('tab-mapa');
                         }
                     });
 
-                    // Clique no Polígono (agora só funciona quando ele está visível)
-                    poly.on('click', () => {
-                         checkbox.checked = !checkbox.checked;
-                         checkbox.dispatchEvent(new Event('change'));
-                         groupDiv.classList.add('open');
-                         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    // CORREÇÃO 3: Evento Clique no Polígono (Mapa)
+                    // Agora funciona porque o poly está sempre no mapa
+                    poly.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e); // Impede que o clique passe para o mapa
+                        toggleSelection(); // Inverte a seleção
+                        
+                        // Feedback visual na lista
+                        groupDiv.classList.add('open');
+                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     });
 
                     contentDiv.appendChild(row);
 
-                } catch(e){ console.warn("Erro geometria", e); }
+                } catch(e){ console.warn("Erro ao processar talhão:", e); }
             });
 
             groupDiv.appendChild(headerDiv);
