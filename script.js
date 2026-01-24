@@ -221,14 +221,25 @@ function loadClientFarms(uid) {
 
                     farmClusters.addLayer(labelMarker); 
 
-                    // 3. Lista e Checkbox
+                    // 3. Lista e Checkbox (COM O NOVO BOTÃO)
                     const row = document.createElement('div');
                     row.className = 'plot-item';
-                    row.innerHTML = `<input type="checkbox" class="chk-export" 
-                        data-farm-id="${doc.id}" data-farm-name="${f.nome}" data-farm-num="${f.numero}"
-                        data-plot-name="${displayName}" data-plot-area="${areaHa}"> <span>${displayName}</span>`;
+                    
+                    // HTML Atualizado: Checkbox + Nome + Botão de Localizar
+                    row.innerHTML = `
+                        <input type="checkbox" class="chk-export" 
+                            data-farm-id="${doc.id}" data-farm-name="${f.nome}" data-farm-num="${f.numero}"
+                            data-plot-name="${displayName}" data-plot-area="${areaHa}"> 
+                        
+                        <span>${displayName}</span>
+                        
+                        <button class="btn-locate-plot" title="Ver no Mapa">
+                            <i class="fa-solid fa-location-crosshairs"></i>
+                        </button>
+                    `;
                     
                     const checkbox = row.querySelector('input');
+                    const locateBtn = row.querySelector('.btn-locate-plot'); // Pega o botão
 
                     // Função Central de Seleção
                     function toggleSelection(forceState) {
@@ -253,17 +264,29 @@ function loadClientFarms(uid) {
 
                     checkbox.addEventListener('change', () => toggleSelection(checkbox.checked));
 
+                    // --- MUDANÇA DE COMPORTAMENTO ---
+                    
+                    // 1. Clicar na Linha INTEIRA (menos no botão de mapa) = SELECIONAR
                     row.addEventListener('click', (e) => {
-                        if(e.target !== checkbox) {
-                            farmClusters.zoomToShowLayer(labelMarker, () => {
-                                map.panTo(latlng);
-                                poly.openTooltip(); 
-                            });
-                            switchClientTab('tab-mapa');
-                        }
+                        // Se o clique foi no botão de localizar ou no próprio checkbox, ignora aqui
+                        if(e.target.closest('.btn-locate-plot') || e.target === checkbox) return;
+                        
+                        toggleSelection(); // Marca/Desmarca
                     });
 
-                    // Evento de Clique no Polígono
+                    // 2. Clicar no Botão de Mapa = IR PARA O MAPA
+                    locateBtn.addEventListener('click', (e) => {
+                        e.stopPropagation(); // Impede que selecione a linha ao clicar no botão
+                        
+                        // Zoom e troca de aba
+                        farmClusters.zoomToShowLayer(labelMarker, () => {
+                            map.panTo(latlng);
+                            poly.openTooltip(); 
+                        });
+                        switchClientTab('tab-mapa');
+                    });
+
+                    // Evento de Clique no Polígono (Mantém igual)
                     poly.on('click', (e) => {
                         L.DomEvent.stopPropagation(e); 
                         toggleSelection(); 
@@ -271,14 +294,11 @@ function loadClientFarms(uid) {
                         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     });
 
-                    // --- AQUI ESTÁ A CORREÇÃO ---
-                    // Agora clicar no NOME faz a mesma coisa que clicar no POLÍGONO
                     labelMarker.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e); // Não deixa clicar no mapa atrás
-                        toggleSelection();             // Seleciona o talhão
-                        groupDiv.classList.add('open'); // Abre a lista se precisar
+                        L.DomEvent.stopPropagation(e); 
+                        toggleSelection();             
+                        groupDiv.classList.add('open'); 
                     });
-                    // ----------------------------
 
                     contentDiv.appendChild(row);
 
