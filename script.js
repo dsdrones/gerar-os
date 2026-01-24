@@ -1250,99 +1250,38 @@ function openOrderDetails(orderId) {
     document.getElementById('order-details-modal').classList.remove('hidden');
 }
 
+// Fecha o modal do relatório e destrava a tela
 function closeOrderDetails() {
-    document.getElementById('order-details-modal').classList.add('hidden');
+    const modal = document.getElementById('order-details-modal');
+    modal.classList.add('hidden'); // Esconde o modal
+    
+    // Garante que o scroll da página volte a funcionar
+    document.body.style.overflow = 'auto'; 
 }
 
 function printOrderReport() {
-    // 1. AQUI ESTÁ A MUDANÇA: Usamos o ID que já está no seu HTML
-    const elementoImpressao = document.getElementById('printable-order-content');
-
-    if (!elementoImpressao) {
-        alert("Erro: Elemento de impressão não encontrado.");
-        return;
+    // 1. Muda o título da página temporariamente 
+    // (Isso define o nome do arquivo quando salva em PDF)
+    const originalTitle = document.title;
+    
+    // Tenta pegar o nome do cliente e data para o nome do arquivo
+    try {
+        const clientName = document.getElementById('detail-client').innerText;
+        // Troca as barras / por traços - para não dar erro no nome do arquivo
+        const date = document.getElementById('detail-date').innerText.split(': ')[1].replace(/\//g, '-');
+        document.title = `Pedido_${clientName}_${date}`;
+    } catch (e) {
+        document.title = "Relatorio_Solicitacao";
     }
 
-    const conteudoRelatorio = elementoImpressao.innerHTML;
+    // 2. Chama a impressão DIRETO na mesma tela
+    // O seu arquivo style.css (na parte @media print) vai cuidar de esconder o resto
+    window.print();
 
-    // 2. Abre a janela em branco
-    const janelaPrint = window.open('', '', 'height=800,width=900');
-
-    janelaPrint.document.write('<html><head><title>Relatório de Solicitação</title>');
-    
-    // 3. Estilos de Impressão (Ajustados para o seu HTML)
-    janelaPrint.document.write(`
-        <style>
-            body { 
-                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-                padding: 40px; 
-                color: #000;
-                -webkit-print-color-adjust: exact; /* Força imprimir cores de fundo */
-            }
-            
-            /* Ajuste do Cabeçalho do Relatório */
-            .report-header {
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                border-bottom: 2px solid #000;
-                padding-bottom: 20px;
-                margin-bottom: 20px;
-            }
-            .report-logo { display: flex; align-items: center; gap: 15px; }
-            .report-logo h2 { margin: 0; font-size: 24px; color: #0f172a; }
-            .report-meta p { margin: 5px 0; text-align: right; }
-
-            /* Caixa de Informações */
-            .report-info-box {
-                background-color: #f8f9fa;
-                border: 1px solid #ddd;
-                padding: 15px;
-                border-radius: 5px;
-                margin-bottom: 25px;
-            }
-            .report-info-box p { margin: 8px 0; font-size: 14px; }
-
-            /* Tabela */
-            table.report-table { 
-                width: 100%; 
-                border-collapse: collapse; 
-                margin-top: 10px; 
-            }
-            th, td { 
-                border: 1px solid #ccc; 
-                padding: 10px; 
-                text-align: left; 
-                font-size: 13px; 
-            }
-            thead { background-color: #e2e8f0 !important; font-weight: bold; }
-            
-            /* Rodapé */
-            .report-footer {
-                margin-top: 40px;
-                text-align: center;
-                font-size: 12px;
-                color: #666;
-                border-top: 1px solid #eee;
-                padding-top: 20px;
-            }
-
-            /* Evita corte de linhas na quebra de página */
-            tr { page-break-inside: avoid; }
-        </style>
-    `);
-    
-    janelaPrint.document.write('</head><body>');
-    janelaPrint.document.write(conteudoRelatorio);
-    janelaPrint.document.write('</body></html>');
-
-    janelaPrint.document.close(); 
-    janelaPrint.focus(); 
-    
+    // 3. Devolve o título original do site depois de 1 segundo
     setTimeout(() => {
-        janelaPrint.print();
-        janelaPrint.close();
-    }, 500);
+        document.title = originalTitle;
+    }, 1000);
 }
 
 
