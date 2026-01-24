@@ -165,10 +165,23 @@ function loadClientFarms(uid) {
         
         const bounds = L.latLngBounds();
         const fragment = document.createDocumentFragment(); 
+
+        // --- MUDANÇA AQUI: CRIAR ARRAY E ORDENAR ---
+        let farmsArray = [];
+        snap.forEach(doc => farmsArray.push(doc));
+
+        // Ordena do menor para o maior (F01, F02, F03...)
+        farmsArray.sort((a, b) => {
+            let numA = a.data().numero || 0; // Se não tiver número, considera 0
+            let numB = b.data().numero || 0;
+            return numA - numB;
+        });
+        // -------------------------------------------
         
-        snap.forEach(doc => {
+        // Agora fazemos o loop na lista JÁ ORDENADA
+        farmsArray.forEach(doc => {
             const f = doc.data();
-            const fNum = String(f.numero).padStart(2,'0');
+            const fNum = String(f.numero).padStart(2,'0'); // Garante o 0 na frente (01, 02)
             
             const groupDiv = document.createElement('div');
             groupDiv.className = 'farm-group'; 
@@ -215,17 +228,15 @@ function loadClientFarms(uid) {
 
                     const labelMarker = L.marker(latlng, { icon: labelIcon });
 
-                    // Vínculo de Visibilidade
                     labelMarker.on('add', () => { poly.addTo(map); });
                     labelMarker.on('remove', () => { poly.remove(); });
 
                     farmClusters.addLayer(labelMarker); 
 
-                    // 3. Lista e Checkbox (COM O NOVO BOTÃO)
+                    // 3. Lista (COM BOTÃO DE MAPA)
                     const row = document.createElement('div');
                     row.className = 'plot-item';
                     
-                    // HTML Atualizado: Checkbox + Nome + Botão de Localizar
                     row.innerHTML = `
                         <input type="checkbox" class="chk-export" 
                             data-farm-id="${doc.id}" data-farm-name="${f.nome}" data-farm-num="${f.numero}"
@@ -239,9 +250,8 @@ function loadClientFarms(uid) {
                     `;
                     
                     const checkbox = row.querySelector('input');
-                    const locateBtn = row.querySelector('.btn-locate-plot'); // Pega o botão
+                    const locateBtn = row.querySelector('.btn-locate-plot');
 
-                    // Função Central de Seleção
                     function toggleSelection(forceState) {
                         const newState = (typeof forceState === 'boolean') ? forceState : !checkbox.checked;
                         checkbox.checked = newState;
@@ -264,21 +274,13 @@ function loadClientFarms(uid) {
 
                     checkbox.addEventListener('change', () => toggleSelection(checkbox.checked));
 
-                    // --- MUDANÇA DE COMPORTAMENTO ---
-                    
-                    // 1. Clicar na Linha INTEIRA (menos no botão de mapa) = SELECIONAR
                     row.addEventListener('click', (e) => {
-                        // Se o clique foi no botão de localizar ou no próprio checkbox, ignora aqui
                         if(e.target.closest('.btn-locate-plot') || e.target === checkbox) return;
-                        
-                        toggleSelection(); // Marca/Desmarca
+                        toggleSelection(); 
                     });
 
-                    // 2. Clicar no Botão de Mapa = IR PARA O MAPA
                     locateBtn.addEventListener('click', (e) => {
-                        e.stopPropagation(); // Impede que selecione a linha ao clicar no botão
-                        
-                        // Zoom e troca de aba
+                        e.stopPropagation(); 
                         farmClusters.zoomToShowLayer(labelMarker, () => {
                             map.panTo(latlng);
                             poly.openTooltip(); 
@@ -286,7 +288,6 @@ function loadClientFarms(uid) {
                         switchClientTab('tab-mapa');
                     });
 
-                    // Evento de Clique no Polígono (Mantém igual)
                     poly.on('click', (e) => {
                         L.DomEvent.stopPropagation(e); 
                         toggleSelection(); 
