@@ -211,9 +211,7 @@
                     </div>
                 </div>
 
-                <button id="fab-os-mobile" onclick="requestOS()">
-                    <i class="fa-solid fa-file-contract"></i> Gerar OS (<span id="fab-count">0</span>)
-                </button>
+                
 
             </div>
 
@@ -314,7 +312,8 @@
                     </p>
                     
                     <label for="os-type-input" style="font-weight:bold; display:block; margin-bottom:5px;">Tipo de Aplicação</label>
-                    <select id="os-type-input">
+                    
+                    <select id="os-type-input" onchange="checkOtherOption(this)">
                         <option value="">Selecione...</option>
                         <option value="Dessecação">Dessecação</option>
                         <option value="Fungicida">Fungicida</option>
@@ -325,6 +324,8 @@
                         <option value="Mapeamento">Mapeamento</option>
                         <option value="Outros">Outros</option>
                     </select>
+
+                    <input type="text" id="os-type-custom" placeholder="Digite o tipo de aplicação..." style="display:none; margin-top:10px;">
 
                     <div style="display:flex; gap:10px; margin-top:10px;">
                         <button class="btn btn-danger" style="flex:1" onclick="closeOSModal()">Cancelar</button>
@@ -457,6 +458,9 @@
         </div>
 
     </div>
+	<button id="fab-os-mobile" onclick="requestOS()">
+            <i class="fa-solid fa-file-contract"></i> Gerar OS (<span id="fab-count">0</span>)
+        </button>
 
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>

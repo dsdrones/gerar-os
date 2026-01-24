@@ -150,10 +150,9 @@ function loadClientFarms(uid) {
     const list = document.getElementById('farms-list');
     list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'><i class='fa-solid fa-circle-notch fa-spin'></i> Carregando mapas...</div>";
     
-    // Limpeza geral
     if(farmClusters) farmClusters.clearLayers();
+    
     map.eachLayer(layer => {
-        // Remove polígonos antigos, mas mantém o TileLayer (Google)
         if (layer instanceof L.Path && !layer._url) map.removeLayer(layer);
     });
 
@@ -171,7 +170,6 @@ function loadClientFarms(uid) {
             const f = doc.data();
             const fNum = String(f.numero).padStart(2,'0');
             
-            // --- ESTRUTURA DA LISTA ---
             const groupDiv = document.createElement('div');
             groupDiv.className = 'farm-group'; 
             
@@ -182,10 +180,7 @@ function loadClientFarms(uid) {
             const contentDiv = document.createElement('div');
             contentDiv.className = 'farm-content';
 
-            // CORREÇÃO 1: Evento de abrir a lista simplificado e direto
-            headerDiv.onclick = function() {
-                groupDiv.classList.toggle('open');
-            };
+            headerDiv.onclick = function() { groupDiv.classList.toggle('open'); };
 
             const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
 
@@ -196,23 +191,21 @@ function loadClientFarms(uid) {
                     const areaM2 = turf.area(geoData);
                     const areaHa = (areaM2 / 10000).toFixed(2); 
 
-                    // --- MAPA ---
-                    
-                    // 1. Polígono (Sempre visível no mapa, mas leve)
+                    // 1. Polígono
                     const poly = L.geoJSON(geoData, {
-                        smoothFactor: 5.0, // Anti-lag
+                        smoothFactor: 5.0, 
                         style: {color:'#ffffff', weight:2, fillOpacity:0.1}
-                    }).addTo(map); // <--- VOLTOU A SER ADICIONADO DIRETO AO MAPA
+                    });
 
                     bounds.extend(poly.getBounds());
 
-                    // 2. Marcador do Nome (Vai para o Cluster)
+                    // 2. Marcador do Nome
                     const center = turf.centerOfMass(geoData);
                     const latlng = [center.geometry.coordinates[1], center.geometry.coordinates[0]];
                     
                     const labelIcon = L.divIcon({ 
                         className: 'client-plot-label', 
-                        html: `<div style="text-align:center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000;">
+                        html: `<div style="text-align:center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000; cursor:pointer;">
                                  <b>${displayName}</b><br>
                                  <span style="font-size:0.9em">${areaHa} ha</span>
                                </div>`,
@@ -221,9 +214,14 @@ function loadClientFarms(uid) {
                     });
 
                     const labelMarker = L.marker(latlng, { icon: labelIcon });
-                    farmClusters.addLayer(labelMarker); // Só o nome é clusterizado
 
-                    // --- LISTA ---
+                    // Vínculo de Visibilidade
+                    labelMarker.on('add', () => { poly.addTo(map); });
+                    labelMarker.on('remove', () => { poly.remove(); });
+
+                    farmClusters.addLayer(labelMarker); 
+
+                    // 3. Lista e Checkbox
                     const row = document.createElement('div');
                     row.className = 'plot-item';
                     row.innerHTML = `<input type="checkbox" class="chk-export" 
@@ -232,8 +230,7 @@ function loadClientFarms(uid) {
                     
                     const checkbox = row.querySelector('input');
 
-                    // CORREÇÃO 2: Lógica de Seleção Unificada
-                    // Criamos uma função única para mudar o estado, usada tanto pelo clique no mapa quanto no checkbox
+                    // Função Central de Seleção
                     function toggleSelection(forceState) {
                         const newState = (typeof forceState === 'boolean') ? forceState : !checkbox.checked;
                         checkbox.checked = newState;
@@ -246,7 +243,6 @@ function loadClientFarms(uid) {
                             row.classList.remove('active');
                         }
 
-                        // Atualiza botão flutuante
                         const total = document.querySelectorAll('.chk-export:checked').length;
                         const fab = document.getElementById('fab-os-mobile');
                         if(fab) {
@@ -255,33 +251,38 @@ function loadClientFarms(uid) {
                         }
                     }
 
-                    // Evento Checkbox da Lista
                     checkbox.addEventListener('change', () => toggleSelection(checkbox.checked));
 
-                    // Evento Clique na Linha da Lista (Zoom)
                     row.addEventListener('click', (e) => {
                         if(e.target !== checkbox) {
-                            map.fitBounds(poly.getBounds());
-                            // Tenta abrir o cluster para mostrar o nome
-                            farmClusters.zoomToShowLayer(labelMarker, () => {});
+                            farmClusters.zoomToShowLayer(labelMarker, () => {
+                                map.panTo(latlng);
+                                poly.openTooltip(); 
+                            });
                             switchClientTab('tab-mapa');
                         }
                     });
 
-                    // CORREÇÃO 3: Evento Clique no Polígono (Mapa)
-                    // Agora funciona porque o poly está sempre no mapa
+                    // Evento de Clique no Polígono
                     poly.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e); // Impede que o clique passe para o mapa
-                        toggleSelection(); // Inverte a seleção
-                        
-                        // Feedback visual na lista
+                        L.DomEvent.stopPropagation(e); 
+                        toggleSelection(); 
                         groupDiv.classList.add('open');
                         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     });
 
+                    // --- AQUI ESTÁ A CORREÇÃO ---
+                    // Agora clicar no NOME faz a mesma coisa que clicar no POLÍGONO
+                    labelMarker.on('click', (e) => {
+                        L.DomEvent.stopPropagation(e); // Não deixa clicar no mapa atrás
+                        toggleSelection();             // Seleciona o talhão
+                        groupDiv.classList.add('open'); // Abre a lista se precisar
+                    });
+                    // ----------------------------
+
                     contentDiv.appendChild(row);
 
-                } catch(e){ console.warn("Erro ao processar talhão:", e); }
+                } catch(e){ console.warn("Erro talhão:", e); }
             });
 
             groupDiv.appendChild(headerDiv);
@@ -319,6 +320,11 @@ function requestOS() {
     document.getElementById('os-summary-text').innerText = `Você selecionou ${pendingOSItems.length} mapas para processamento.`;
     document.getElementById('os-type-input').value = ""; // Limpa o select
     
+    // --- LINHA NOVA: Garante que o campo customizado comece escondido ---
+    document.getElementById('os-type-custom').style.display = 'none'; 
+    document.getElementById('os-type-custom').value = '';
+    // -------------------------------------------------------------------
+    
     // Abre a modal
     document.getElementById('new-os-modal').classList.remove('hidden');
 }
@@ -329,13 +335,24 @@ function closeOSModal() {
 }
 
 function finalizeOS() {
-    const type = document.getElementById('os-type-input').value;
+    // --- LÓGICA NOVA PARA PEGAR O TIPO ---
+    const selectElement = document.getElementById('os-type-input');
+    const customInputElement = document.getElementById('os-type-custom');
+    
+    let type = selectElement.value;
+
+    // Se escolheu "Outros", pega o valor digitado no campo de texto
+    if (type === 'Outros') {
+        type = customInputElement.value.trim(); // .trim() remove espaços vazios no começo/fim
+    }
+    // -------------------------------------
     
     if(!type) {
-        alert("Por favor, selecione o Tipo de Aplicação.");
+        alert("Por favor, selecione ou digite o Tipo de Aplicação.");
         return;
     }
 
+    // ... (O resto da função continua igual: const user = firebase...)
     const user = firebase.auth().currentUser;
     const clientName = document.getElementById('client-name-display').innerText;
     const btnSend = document.querySelector('#new-os-modal .btn-success');
@@ -1827,6 +1844,19 @@ function loadProfilePhoto() {
             });
         }
     });
+}
+
+// Função para mostrar/esconder o campo "Outros"
+function checkOtherOption(selectElement) {
+    const customInput = document.getElementById('os-type-custom');
+    
+    if (selectElement.value === 'Outros') {
+        customInput.style.display = 'block'; // Mostra
+        customInput.focus(); // Já coloca o cursor lá pra digitar
+    } else {
+        customInput.style.display = 'none';  // Esconde
+        customInput.value = ''; // Limpa o que estava escrito se mudar de ideia
+    }
 }
 
 // Inicializa
