@@ -41,6 +41,10 @@ let osLayers = L.layerGroup();
 let osLabels = L.layerGroup();
 let isPreviewMode = false;
 let loadedOSFeatures = [];
+
+// Variável global para o Cluster
+let farmClusters = null;
+
 // --- LOGIN ---
 auth.onAuthStateChanged(async (user) => {
     if (user) {
@@ -93,20 +97,13 @@ function updateThemeIcons(isDark) { document.querySelectorAll('.fa-moon, .fa-sun
 function initMap() {
     if(map) return;
     
-    // Configuração Inicial do Mapa (OTIMIZADA PARA MOBILE)
+    // 1. Configuração Otimizada do Mapa
     map = L.map('map', {
-        zoomControl: false,       // Removemos o original pois já temos botões personalizados
-        
-        // 1. PERFORMANCE (Evita travar o celular)
-        preferCanvas: true,       // Usa a GPU para desenhar as linhas
-        markerZoomAnimation: false, // Desativa animações pesadas de marcadores
-        
-        // 2. SUAVIDADE DO ZOOM (Resolve o "Zoom Grosseiro")
-        zoomSnap: 0.1,            // Permite parar o zoom em níveis quebrados (ex: 14.3)
-        zoomDelta: 0.5,           // Os botões + e - mudam o zoom mais devagar
-        wheelPxPerZoomLevel: 120, // Ajusta a sensibilidade do scroll/dedo
-        
-        // 3. Limites
+        zoomControl: false,
+        preferCanvas: true,        // Turbo ativado (GPU)
+        zoomSnap: 0.5,             // Zoom suave
+        zoomDelta: 0.5,
+        wheelPxPerZoomLevel: 120,
         minZoom: 4,
         maxZoom: 22
     }).setView([-14.2350, -51.9253], 4);
@@ -116,25 +113,34 @@ function initMap() {
         subdomains:['mt0','mt1','mt2','mt3']
     }).addTo(map);
     
-    // Adiciona os botões de Zoom manualmente no canto inferior
     L.control.zoom({position: 'bottomright'}).addTo(map);
 
-    // --- NOVA LÓGICA INTELIGENTE DE ZOOM ---
-    function checkZoomLevel() {
-        // ... (O resto da sua função continua igual daqui para baixo)
-        const currentZoom = map.getZoom();
-        const mapElement = document.getElementById('map');
+    // 2. INICIALIZA O GRUPO DE CLUSTERS
+    // Isso cria a lógica de agrupar as bolinhas
+    farmClusters = L.markerClusterGroup({
+        // --- AQUI É A REGULAGEM DE DISTÂNCIA ---
+        maxClusterRadius: 30,       // Tente 40. (Padrão é 80). Quanto MENOR, mais cedo aparece.
         
-        if (currentZoom < 16) {
-            mapElement.classList.add('hide-labels');
-        } else {
-            mapElement.classList.remove('hide-labels');
+        // Outra opção útil: Forçar aparecer tudo num zoom específico
+        // disableClusteringAtZoom: 15, // Se descomentar, no zoom 15 tudo se abre na marra
+        
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        spiderfyOnMaxZoom: true,
+        removeOutsideVisibleBounds: true,
+        
+        iconCreateFunction: function(cluster) {
+            return L.divIcon({ 
+                html: '<div style="background-color:rgba(37, 99, 235, 0.9); color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid white; box-shadow:0 0 5px rgba(0,0,0,0.5);">' + cluster.getChildCount() + '</div>', 
+                className: 'my-cluster-icon', 
+                iconSize: L.point(30, 30) 
+            });
         }
-    }
+    });
+    
+    map.addLayer(farmClusters);
 
-    map.on('zoomend', checkZoomLevel);
-    checkZoomLevel();
-
+    // Botão de GPS
     addLocationControl();
     map.on('locationfound', onLocationFound);
     map.on('locationerror', onLocationError);
@@ -144,6 +150,14 @@ function loadClientFarms(uid) {
     const list = document.getElementById('farms-list');
     list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'><i class='fa-solid fa-circle-notch fa-spin'></i> Carregando mapas...</div>";
     
+    // Limpa clusters antigos se houver
+    if(farmClusters) farmClusters.clearLayers();
+    
+    // Limpa polígonos antigos desenhados direto no mapa (se houver)
+    map.eachLayer(layer => {
+        if (layer instanceof L.Path && !layer._url) map.removeLayer(layer);
+    });
+
     db.collection('fazendas').where('donoUID', '==', uid).get().then(snap => {
         list.innerHTML = "";
         if(snap.empty) { 
@@ -152,129 +166,109 @@ function loadClientFarms(uid) {
         }
         
         const bounds = L.latLngBounds();
-        let hasLayers = false;
-
-        // --- OTIMIZAÇÃO: CRIAR FRAGMENTO NA MEMÓRIA ---
-        // Em vez de colocar na tela item por item, colocamos nessa "caixa virtual"
         const fragment = document.createDocumentFragment(); 
         
         snap.forEach(doc => {
             const f = doc.data();
             const fNum = String(f.numero).padStart(2,'0');
             
-            // Cria os elementos usando DOM (muito mais rápido que innerHTML repetido)
+            // --- CRIAÇÃO DA LISTA (HTML) ---
             const groupDiv = document.createElement('div');
             groupDiv.className = 'farm-group'; 
-
             const headerDiv = document.createElement('div');
             headerDiv.className = 'farm-header';
-            headerDiv.innerHTML = `
-                <span>F${fNum} - ${f.nome}</span>
-                <i class="fa-solid fa-chevron-down farm-arrow"></i>
-            `;
-
+            headerDiv.innerHTML = `<span>F${fNum} - ${f.nome}</span><i class="fa-solid fa-chevron-down farm-arrow"></i>`;
             const contentDiv = document.createElement('div');
             contentDiv.className = 'farm-content';
 
-            // Evento de abrir/fechar
-            headerDiv.addEventListener('click', () => {
-                groupDiv.classList.toggle('open');
-            });
+            headerDiv.addEventListener('click', () => { groupDiv.classList.toggle('open'); });
 
             const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
 
             sortedTalhoes.forEach(t => {
                 try {
-                    let geoData = (typeof t.geometry === 'string') ? JSON.parse(t.geometry) : t.geometry;
+                    const geoData = (typeof t.geometry === 'string') ? JSON.parse(t.geometry) : t.geometry;
                     const displayName = t.nomeOriginal && t.nomeOriginal.length > 0 ? t.nomeOriginal : `Talhão ${t.numero}`;
-                    
                     const areaM2 = turf.area(geoData);
                     const areaHa = (areaM2 / 10000).toFixed(2); 
 
-                    const row = document.createElement('div');
-                    row.className = 'plot-item';
-                    
-                    row.innerHTML = `<input type="checkbox" class="chk-export" 
-                        data-farm-id="${doc.id}" 
-                        data-farm-name="${f.nome}"
-                        data-farm-num="${f.numero}"
-                        data-plot-name="${displayName}"
-                        data-plot-area="${areaHa}"> <span>${displayName}</span>`;
-                    
-                    // Mapa
+                    // ... (seu código anterior de geoData, displayName, etc) ...
+
+                    // 1. CRIA O POLÍGONO (Mas NÃO adiciona ao mapa ainda!)
+                    // Removemos o .addTo(map) daqui
                     const poly = L.geoJSON(geoData, {
-                        smoothFactor: 2.0, // Aumentei de 1.5 para 2.0 (Desenha menos pontos, mais leve)
+                        smoothFactor: 5.0, 
                         style: {color:'#ffffff', weight:2, fillOpacity:0.1}
-                    }).addTo(map);
-                    
-                    poly.bindTooltip(`${displayName}<br><span style="font-size:0.9em">${areaHa} ha</span>`, {
-                        permanent: true, 
-                        direction: 'center', 
-                        className: 'client-plot-label' 
                     });
-                    
+
                     bounds.extend(poly.getBounds());
-                    hasLayers = true;
                     
-                    // Checkbox interação
-                    const checkbox = row.querySelector('input');
-                    
-                    checkbox.addEventListener('change', e => {
-                        if(e.target.checked) {
-                            poly.setStyle({color: '#ffcc00', weight: 3, fillOpacity: 0.6});
-                            row.classList.add('active');
-                        } else {
-                            poly.setStyle({color: '#ffffff', weight: 2, fillOpacity: 0.1});
-                            row.classList.remove('active');
-                        }
-                        
-                        // Atualiza FAB (Botão flutuante)
-                        const totalSelected = document.querySelectorAll('.chk-export:checked').length;
-                        const fab = document.getElementById('fab-os-mobile');
-                        const fabCount = document.getElementById('fab-count');
+                    // 2. CRIA O MARCADOR DO NOME (Rótulo)
+                    const center = turf.centerOfMass(geoData);
+                    const latlng = [center.geometry.coordinates[1], center.geometry.coordinates[0]];
 
-                        if(fab && fabCount) {
-                            fabCount.innerText = totalSelected;
-                            if(totalSelected > 0) fab.classList.add('visible');
-                            else fab.classList.remove('visible');
+                    const labelIcon = L.divIcon({ 
+                        className: 'client-plot-label', 
+                        html: `<div style="text-align:center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000;">
+                                 <b>${displayName}</b><br>
+                                 <span style="font-size:0.9em">${areaHa} ha</span>
+                               </div>`,
+                        iconSize: [100, 40],
+                        iconAnchor: [50, 20]
+                    });
+
+                    const labelMarker = L.marker(latlng, { icon: labelIcon });
+                    
+                    // 3. O PULO DO GATO (VINCULAR POLÍGONO AO MARCADOR)
+                    // Se o Cluster mostrar o marcador (add), mostramos o polígono.
+                    // Se o Cluster esconder o marcador (remove), escondemos o polígono.
+                    
+                    labelMarker.on('add', () => {
+                        poly.addTo(map);
+                    });
+
+                    labelMarker.on('remove', () => {
+                        poly.remove();
+                    });
+                    
+                    // 4. ADICIONA SÓ O MARCADOR AO CLUSTER
+                    // O polígono vai "de carona" automaticamente pelos eventos acima
+                    farmClusters.addLayer(labelMarker);
+
+                    // ... (seu código de checkbox e interação continua igual abaixo) ...
+                    
+                    // IMPORTANTE: Ajuste o clique da lista para dar zoom no marcador (que controla o polígono)
+                    row.addEventListener('click', (e) => {
+                        if(e.target.type !== 'checkbox') {
+                            // Zoom para exibir o marcador (o cluster vai se abrir e mostrar o polígono)
+                            farmClusters.zoomToShowLayer(labelMarker, () => {
+                                // Opcional: Centraliza e abre popup se quiser
+                                map.panTo(latlng);
+                            }); 
+                            switchClientTab('tab-mapa');
                         }
                     });
 
-                    // NOVO
-row.addEventListener('click', (e) => {
-    if(e.target.type !== 'checkbox') {
-        // 1. Centraliza a fazenda
-        map.fitBounds(poly.getBounds());
-        
-        // 2. Troca para a aba do mapa automaticamente
-        switchClientTab('tab-mapa');
-    }
-});
-
-                    // Clique no mapa
+                    // Clique no Polígono (agora só funciona quando ele está visível)
                     poly.on('click', () => {
-                        checkbox.checked = !checkbox.checked;
-                        checkbox.dispatchEvent(new Event('change'));
-                        groupDiv.classList.add('open');
-                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                         checkbox.checked = !checkbox.checked;
+                         checkbox.dispatchEvent(new Event('change'));
+                         groupDiv.classList.add('open');
+                         row.scrollIntoView({ behavior: 'smooth', block: 'center' });
                     });
 
                     contentDiv.appendChild(row);
-                } catch(e){ console.warn("Erro ao ler talhão:", e); }
+
+                } catch(e){ console.warn("Erro geometria", e); }
             });
 
             groupDiv.appendChild(headerDiv);
             groupDiv.appendChild(contentDiv);
-            
-            // Adiciona na "caixa virtual"
             fragment.appendChild(groupDiv);
         });
         
-        // --- COLAGEM ÚNICA (Muito mais rápido) ---
-        // Só agora jogamos tudo na tela de uma vez só
         list.appendChild(fragment);
-        
-        if(hasLayers) setTimeout(() => { map.fitBounds(bounds); }, 500);
+        if(!snap.empty) setTimeout(() => { map.fitBounds(bounds); }, 500);
     });
 }
 

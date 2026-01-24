@@ -1830,3 +1830,21 @@ body {
     will-change: opacity, transform;
     transition: transform 0.25s cubic-bezier(0,0,0.25,1);
 }
+
+
+/* ================================================================= */
+/* CORREÇÃO DO ZOOM SENSÍVEL (MOBILE)                                */
+/* ================================================================= */
+
+#map {
+    /* OBRIGATÓRIO: Impede o navegador de interferir no zoom */
+    touch-action: none !important; 
+    
+    /* Melhora a performance da GPU */
+    will-change: transform;
+    
+    /* Evita seleções acidentais */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
