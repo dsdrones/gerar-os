@@ -1178,45 +1178,26 @@ function openOrderDetails(orderId) {
     const order = loadedClientOrders.find(o => o.id === orderId);
     if(!order) return;
 
-    // Preenche os dados básicos
-    document.getElementById('detail-client').innerText = order.clientName;
-    document.getElementById('detail-date').innerText = "Data: " + new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
-    document.getElementById('detail-type').innerText = order.tipoAplicacao || "Não informado";
-    
-    const statusEl = document.getElementById('detail-status');
-    statusEl.innerText = order.status.toUpperCase();
-    
-    // Cores do Status
-    if(order.status === 'concluido') statusEl.style.color = 'green';
-    else if(order.status === 'cancelado') statusEl.style.color = 'red';
-    else statusEl.style.color = '#333';
-
-    // --- CÁLCULOS DO RESUMO ---
+    // --- 1. PREPARAÇÃO DOS DADOS (Cálculos) ---
     let totalArea = 0;
-    const uniqueFarms = new Set(); // O Set guarda apenas valores únicos
-    
-    // Limpa e prepara a tabela
-    const tbody = document.getElementById('detail-items-list');
-    tbody.innerHTML = "";
+    const uniqueFarms = new Set();
+    let itemsHtml = "";
 
     order.items.forEach(item => {
         const fName = item.farmName || "-";
         const fNum = item.farmNum ? String(item.farmNum).padStart(2,'0') : "00";
         const tName = item.realName || "Talhão Sem Nome";
         
-        // 1. Adiciona nome da fazenda no Set (para contar quantas fazendas únicas)
         if(item.farmName) uniqueFarms.add(item.farmName);
 
-        // 2. Soma a área (se existir)
         let areaDisplay = "";
         if (item.area && item.area !== "undefined" && item.area !== null) {
-            const val = parseFloat(item.area); // Converte texto "15.50" para número
+            const val = parseFloat(item.area);
             if(!isNaN(val)) totalArea += val;
             areaDisplay = `<strong style="margin-left:5px;">(${item.area} ha)</strong>`;
         }
 
-        // 3. Cria a linha da tabela
-        tbody.innerHTML += `
+        itemsHtml += `
             <tr>
                 <td>${fName}</td>
                 <td>F${fNum}</td>
@@ -1225,29 +1206,44 @@ function openOrderDetails(orderId) {
         `;
     });
 
-    // --- INJETAR O RESUMO NO HTML ---
-    // Vamos usar a div 'report-info-box' que já existe para mostrar o resumo
+    // --- 2. ATUALIZA A DATA E TABELA (Estes ficam fora da caixa problemática) ---
+    const dateEl = document.getElementById('detail-date');
+    if(dateEl) dateEl.innerText = "Data: " + new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
+    
+    const tableEl = document.getElementById('detail-items-list');
+    if(tableEl) tableEl.innerHTML = itemsHtml;
+
+    // --- 3. RECONSTRÓI A CAIXA DE INFORMAÇÕES (Correção do Erro NULL) ---
+    // Aqui nós recriamos o HTML inteiro, GARANTINDO que os IDs existam para a impressão funcionar
+    
+    // Define a cor do status
+    let statusColor = '#333';
+    if(order.status === 'concluido') statusColor = 'green';
+    if(order.status === 'cancelado') statusColor = 'red';
+
     const infoBox = document.querySelector('.report-info-box');
     
-    // Mantém os dados do cliente e ADICIONA o resumo embaixo, com uma linha separadora
-    infoBox.innerHTML = `
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-            <div>
-                <p><strong>Cliente:</strong> ${order.clientName}</p>
-                <p><strong>Tipo:</strong> <span class="highlight-type">${order.tipoAplicacao || '-'}</span></p>
-                <p><strong>Status:</strong> ${order.status.toUpperCase()}</p>
+    if(infoBox) {
+        infoBox.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                    <p><strong>Cliente:</strong> <span id="detail-client">${order.clientName}</span></p>
+                    <p><strong>Tipo:</strong> <span id="detail-type" class="highlight-type">${order.tipoAplicacao || '-'}</span></p>
+                    <p><strong>Status:</strong> <span id="detail-status" style="color:${statusColor}">${order.status.toUpperCase()}</span></p>
+                </div>
+                <div style="border-left: 2px solid #ddd; padding-left: 15px; display: flex; flex-direction: column; justify-content: center;">
+                    <h4 style="margin: 0 0 5px 0; color: #0f172a;">RESUMO GERAL</h4>
+                    <p style="margin: 2px 0;"><strong>Fazendas:</strong> ${uniqueFarms.size}</p>
+                    <p style="margin: 2px 0;"><strong>Talhões:</strong> ${order.items.length}</p>
+                    <p style="margin: 2px 0; font-size: 1.1em; color: var(--primary);"><strong>Total Área:</strong> ${totalArea.toFixed(2)} ha</p>
+                </div>
             </div>
-            <div style="border-left: 2px solid #ddd; padding-left: 15px; display: flex; flex-direction: column; justify-content: center;">
-                <h4 style="margin: 0 0 5px 0; color: #0f172a;">RESUMO GERAL</h4>
-                <p style="margin: 2px 0;"><strong>Fazendas:</strong> ${uniqueFarms.size}</p>
-                <p style="margin: 2px 0;"><strong>Talhões:</strong> ${order.items.length}</p>
-                <p style="margin: 2px 0; font-size: 1.1em; color: var(--primary);"><strong>Total Área:</strong> ${totalArea.toFixed(2)} ha</p>
-            </div>
-        </div>
-    `;
+        `;
+    }
 
     // Abre a modal
-    document.getElementById('order-details-modal').classList.remove('hidden');
+    const modal = document.getElementById('order-details-modal');
+    if(modal) modal.classList.remove('hidden');
 }
 
 // Fecha o modal do relatório e destrava a tela
@@ -1260,28 +1256,29 @@ function closeOrderDetails() {
 }
 
 function printOrderReport() {
-    // 1. Muda o título da página temporariamente 
-    // (Isso define o nome do arquivo quando salva em PDF)
+    // 1. Muda o título da página temporariamente
     const originalTitle = document.title;
     
-    // Tenta pegar o nome do cliente e data para o nome do arquivo
     try {
         const clientName = document.getElementById('detail-client').innerText;
-        // Troca as barras / por traços - para não dar erro no nome do arquivo
         const date = document.getElementById('detail-date').innerText.split(': ')[1].replace(/\//g, '-');
         document.title = `Pedido_${clientName}_${date}`;
     } catch (e) {
         document.title = "Relatorio_Solicitacao";
     }
 
-    // 2. Chama a impressão DIRETO na mesma tela
-    // O seu arquivo style.css (na parte @media print) vai cuidar de esconder o resto
+    // --- MUDANÇA AQUI: Adiciona a classe específica para Relatório ---
+    document.body.classList.add('printing-report');
+
+    // 2. Chama a impressão
     window.print();
 
-    // 3. Devolve o título original do site depois de 1 segundo
+    // 3. Remove a classe e devolve o título original
+    // O timeout garante que o navegador tenha tempo de processar os estilos antes de remover
     setTimeout(() => {
+        document.body.classList.remove('printing-report');
         document.title = originalTitle;
-    }, 1000);
+    }, 500);
 }
 
 

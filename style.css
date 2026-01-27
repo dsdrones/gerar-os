@@ -407,99 +407,6 @@ body.preview-active #os-map-legend { bottom: 80px; left: 80px; transform: scale(
 body.preview-active #os-map-logo { bottom: 80px; right: 80px; max-width: 500px; }
 body.preview-active #os-scale-container { bottom: 80px; transform: translateX(-50%) scale(3.5); transform-origin: bottom center; }
 
-@media print {
-    @page { 
-        size: auto;
-        margin: 5mm; 
-    }
-
-    body, html {
-        width: 100%;
-        height: 100%;
-        margin: 0;
-        padding: 0;
-        background: white !important;
-        overflow: visible !important;
-        -webkit-print-color-adjust: exact !important; 
-        print-color-adjust: exact !important;
-    }
-
-    #admin-interface, #client-interface, #login-overlay, #config-panel, 
-    .admin-sidebar, .modal-overlay, #mobile-menu-btn { 
-        display: none !important; 
-    }
-
-    #os-editor-overlay { 
-        display: block !important;
-        position: fixed !important;
-        top: 0; left: 0;
-        width: 100vw !important;
-        height: 100vh !important;
-        background: white !important;
-        z-index: 99999;
-    }
-
-    #os-map-area { 
-        position: absolute !important;
-        top: 0 !important; left: 0 !important;
-        width: 100% !important; height: 100% !important;
-        margin: 0 !important; border: none !important; 
-        box-shadow: none !important;
-        transform: none !important; 
-    }
-
-    #os-map-title {
-        font-size: 60pt !important;
-        top: 40px !important;
-        width: 100% !important;
-        text-align: center;
-        text-shadow: none !important;
-        color: #000 !important;
-    }
-
-    #os-map-logo {
-        width: 500px !important;
-        max-width: none !important;
-        max-height: none !important;
-        bottom: 60px !important;
-        right: 60px !important;
-    }
-
-    #os-north-arrow {
-        width: 350px !important;
-        height: 350px !important;
-        top: 90px !important;
-        left: 60px !important;
-        transform: none !important;
-    }
-
-    #os-map-legend {
-        transform: scale(2.5) !important;
-        transform-origin: bottom left;
-        bottom: 60px !important;
-        left: 60px !important;
-        background: none !important; 
-        padding: 0 !important;
-        border: none !important;
-        box-shadow: none !important;
-    }
-
-    #os-scale-container {
-        bottom: 50px !important;
-        left: 50% !important;
-        transform: translateX(-50%) scale(3.0) !important;
-    }
-    
-    .leaflet-control-scale-line {
-        border-color: #000 !important;
-        color: #000 !important;
-        background: rgba(255,255,255,0.7) !important;
-    }
-	
-	.no-print {
-        display: none !important;
-    }
-}
 
 #os-scale-container .leaflet-control-scale {
     margin: 0 !important;
@@ -1516,48 +1423,181 @@ body {
     text-overflow: ellipsis;
 }
 
-/* ================================================================= */
-/* CONFIGURAÇÃO ESPECIAL DE IMPRESSÃO DO MAPA (OS)                   */
-/* ================================================================= */
+    /* =============================================== */
+    /* IMPRESSÃO                                       */
+    /* =============================================== */
 
 @media print {
-    /* 1. Quando o corpo tiver a classe "printing-map" (adicionada pelo JS ao clicar em imprimir) */
-    /* Esconde TUDO na página inicialmente */
-    body.printing-map * {
-        visibility: hidden;
+    @page { 
+        /* size: auto permite definir A4, A3 ou A0 na hora de imprimir */
+        size: auto;
+        margin: 5mm;
     }
 
-    /* 2. Mostra APENAS o Editor de OS e o conteúdo dele (mapa, legendas, etc) */
+    /* 1. REGRA GERAL: Limpeza total */
+    body * {
+        visibility: hidden; 
+    }
+    
+    .no-print {
+        display: none !important;
+    }
+
+    /* ======================================================= */
+    /* CENÁRIO 1: ADMIN (MAPA DA OS) - CORREÇÃO A0             */
+    /* ======================================================= */
+    
+    body.printing-map {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    /* Configura o container para aceitar o tamanho gigante */
+    body.printing-map #os-editor-overlay {
+        position: absolute !important; /* Absolute é mais seguro que Fixed para impressão */
+        top: 0 !important; left: 0 !important;
+        width: 4500px !important;  /* Mantém a largura A0 definida no JS */
+        height: 3182px !important; /* Mantém a altura A0 definida no JS */
+        background: white !important;
+        z-index: 99999;
+        display: block !important;
+        overflow: visible !important;
+    }
+
+    /* AQUI ESTÁ A CORREÇÃO DO "BRANCO" */
+    /* Forçamos o mapa a ficar no canto 0,0 e removemos o zoom de tela */
+    body.printing-map #os-map-area,
+    body.printing-map.preview-active #os-map-area {
+        position: absolute !important;
+        top: 0 !important; 
+        left: 0 !important;
+        
+        width: 4500px !important; 
+        height: 3182px !important;
+        
+        /* Remove o scale(0.2) e a centralização (-50%) que quebravam o PDF */
+        transform: none !important; 
+        
+        border: none !important; 
+        box-shadow: none !important;
+        margin: 0 !important;
+    }
+
+    /* Garante visibilidade dos itens */
     body.printing-map #os-editor-overlay,
     body.printing-map #os-editor-overlay * {
         visibility: visible;
     }
-
-    /* 3. Força o Editor a ocupar a folha inteira */
-    body.printing-map #os-editor-overlay {
-        position: fixed !important;
-        left: 0 !important;
-        top: 0 !important;
-        width: 100vw !important;
-        height: 100vh !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        background: white !important;
-        z-index: 9999999 !important; /* Fica por cima de tudo */
+    
+    body.printing-map #os-map-title,
+    body.printing-map #os-map-logo,
+    body.printing-map #os-north-arrow,
+    body.printing-map #os-map-legend,
+    body.printing-map #os-scale-container,
+    body.printing-map .leaflet-control-scale-line {
+        visibility: visible !important;
     }
 
-    /* 4. Esconde as ferramentas (Botões, Zoom, Painel lateral) para sair limpo no papel */
+    /* Esconde ferramentas */
     body.printing-map #config-panel,
-    body.printing-map .leaflet-control-zoom,
-    body.printing-map .btn,
-    body.printing-map .leaflet-control-attribution {
+    body.printing-map .leaflet-control-zoom {
         display: none !important;
     }
 
-    /* 5. LIBERA A ESCOLHA DE RETRATO OU PAISAGEM */
-    /* O 'auto' deixa você escolher na janela de impressão */
-    @page {
-        size: auto; 
-        margin: 0; /* Sem margem para o mapa aproveitar 100% da folha */
+    /* ======================================================= */
+    /* CENÁRIO 2: CLIENTE (RELATÓRIO) - TELA INFINITA          */
+    /* (Correção da Página em Branco e Corte)                  */
+    /* ======================================================= */
+
+    /* Configuração do CORPO para RELATÓRIO */
+    body.printing-report,
+    body.printing-report html {
+        background: white !important;
+        height: auto !important;
+        min-height: 100% !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* CORREÇÃO DA PÁGINA BRANCA: */
+    /* Não escondemos o #main-wrapper (pai). Escondemos apenas os vizinhos que atrapalham. */
+    body.printing-report #client-interface,
+    body.printing-report #admin-interface,
+    body.printing-report .bottom-navbar,
+    body.printing-report .admin-sidebar,
+    body.printing-report #mobile-menu-btn,
+    body.printing-report #login-overlay {
+        display: none !important;
+    }
+
+    /* Configura o Modal para assumir o controle da página */
+    body.printing-report #order-details-modal {
+        visibility: visible !important;
+        
+        /* Posiciona no topo absoluto, cobrindo qualquer resquício */
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        
+        width: 100% !important;
+        height: auto !important; /* Altura livre */
+        
+        z-index: 999999;
+        background: white !important;
+        overflow: visible !important;
+        display: block !important;
+    }
+
+    /* Garante visibilidade dos filhos */
+    body.printing-report #order-details-modal * {
+        visibility: visible !important;
+    }
+
+    /* DESTRAVA A ALTURA DA CAIXA (Correção do corte de conteúdo) */
+    body.printing-report .modal-box {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        
+        /* Remove qualquer limite de altura */
+        height: auto !important;
+        max-height: none !important; 
+        
+        display: block !important;
+        box-shadow: none !important;
+        border: none !important;
+        overflow: visible !important;
+        background: white !important;
+    }
+
+    body.printing-report #printable-order-content {
+        height: auto !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    /* Esconde cabeçalho e rodapé do modal (botões de fechar/voltar) */
+    body.printing-report .modal-header,
+    body.printing-report .modal-footer,
+    body.printing-report .close-btn {
+        display: none !important;
+    }
+
+    /* Tabelas profissionais */
+    body.printing-report table {
+        width: 100% !important;
+        border-collapse: collapse;
+    }
+    body.printing-report tr {
+        page-break-inside: avoid;
+    }
+    body.printing-report thead {
+        display: table-header-group;
     }
 }
