@@ -1601,3 +1601,141 @@ body {
         display: table-header-group;
     }
 }
+
+
+/* ================================================================= */
+/* ESTATÍSTICAS DO PERFIL (NOVO)                                     */
+/* ================================================================= */
+
+/* Resumo Geral (Cards do Topo) */
+.stats-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.stat-card-main {
+    background: white;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    text-align: center;
+    border: 1px solid var(--border);
+}
+
+.stat-card-main h3 {
+    margin: 0;
+    font-size: 1.8rem;
+    color: var(--accent);
+    font-weight: 700;
+}
+
+.stat-card-main p {
+    margin: 5px 0 0 0;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+/* Lista de Fazendas */
+.farm-stat-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-bottom: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+}
+
+.farm-stat-header {
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background: white;
+}
+
+.farm-stat-header:active {
+    background-color: #f8fafc;
+}
+
+.farm-info-left strong {
+    display: block;
+    color: var(--primary);
+    font-size: 1rem;
+    margin-bottom: 2px;
+}
+
+.farm-info-left small {
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.farm-info-right {
+    text-align: right;
+}
+
+.farm-total-area {
+    background: #eff6ff;
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    display: inline-block;
+    margin-bottom: 4px;
+}
+
+.toggle-icon {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    margin-left: 8px;
+    transition: transform 0.3s;
+}
+
+/* Estado Aberto */
+.farm-stat-card.open .toggle-icon {
+    transform: rotate(180deg);
+}
+
+.farm-stat-details {
+    display: none;
+    background: #f8fafc;
+    border-top: 1px solid var(--border);
+    padding: 10px 15px;
+    animation: slideDown 0.3s ease;
+}
+
+.farm-stat-card.open .farm-stat-details {
+    display: block;
+}
+
+/* Tabela de Talhões */
+.plot-stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+    color: var(--text-main);
+}
+
+.plot-stat-row:last-child {
+    border-bottom: none;
+}
+
+/* Dark Mode Support */
+body.dark-mode .stat-card-main,
+body.dark-mode .farm-stat-card,
+body.dark-mode .farm-stat-header {
+    background: #1e293b;
+    border-color: #334155;
+}
+body.dark-mode .farm-stat-details { background: #0f172a; border-color: #334155; }
+body.dark-mode .plot-stat-row { border-color: #334155; color: #cbd5e1; }
+body.dark-mode .farm-total-area { background: #172554; color: #60a5fa; }
+body.dark-mode .farm-info-left strong { color: #f1f5f9; }

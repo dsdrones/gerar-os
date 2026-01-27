@@ -67,6 +67,7 @@ auth.onAuthStateChanged(async (user) => {
             } else {
                 document.getElementById('client-interface').classList.remove('hidden');
                 document.getElementById('client-name-display').innerText = userDoc.data().nome.split(' ')[0];
+				loadClientProfileStats(user.uid);
                 setTimeout(() => { 
 				initMap(); 
                 if(map) map.invalidateSize();
@@ -1814,6 +1815,113 @@ function checkOtherOption(selectElement) {
         customInput.style.display = 'none';  // Esconde
         customInput.value = ''; // Limpa o que estava escrito se mudar de ideia
     }
+}
+
+// ============================================
+// ESTATÍSTICAS DO PERFIL (NOVO)
+// ============================================
+
+function loadClientProfileStats(uid) {
+    const container = document.getElementById('profile-stats-area');
+    if (!container) return;
+
+    // Busca as fazendas do cliente no banco
+    db.collection('fazendas').where('donoUID', '==', uid).get().then(snap => {
+        if (snap.empty) {
+            container.innerHTML = "<p style='text-align:center; color:#777;'>Nenhuma fazenda cadastrada.</p>";
+            return;
+        }
+
+        let totalFarms = 0;
+        let totalGeneralHectares = 0;
+        let farmsHTML = "";
+
+        // Prepara array para ordenar
+        let farms = [];
+        snap.forEach(doc => farms.push(doc.data()));
+        farms.sort((a, b) => (a.numero || 0) - (b.numero || 0));
+
+        // Loop pelas fazendas
+        farms.forEach(f => {
+            totalFarms++;
+            let farmArea = 0;
+            let plotsHTML = "";
+            
+            // Ordena os talhões
+            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
+
+            // Loop pelos talhões para calcular área e montar lista
+            sortedTalhoes.forEach(t => {
+                try {
+                    const geoData = JSON.parse(t.geometry);
+                    const areaM2 = turf.area(geoData);
+                    const areaHa = (areaM2 / 10000); // Converte m² para Hectares
+                    
+                    farmArea += areaHa;
+                    
+                    const tName = t.nomeOriginal || `Talhão ${t.numero}`;
+                    
+                    plotsHTML += `
+                        <div class="plot-stat-row">
+                            <span><i class="fa-solid fa-draw-polygon" style="font-size:0.8em; margin-right:5px; opacity:0.5;"></i> ${tName}</span>
+                            <strong>${areaHa.toFixed(2)} ha</strong>
+                        </div>
+                    `;
+                } catch (e) { console.error(e); }
+            });
+
+            totalGeneralHectares += farmArea;
+            const fNum = String(f.numero).padStart(2, '0');
+
+            // HTML DO CARD DA FAZENDA
+            // Usamos um onclick simples para abrir/fechar os detalhes
+            farmsHTML += `
+                <div class="farm-stat-card" id="stat-card-${fNum}">
+                    <div class="farm-stat-header" onclick="toggleStatCard(this)">
+                        <div class="farm-info-left">
+                            <strong>F${fNum} - ${f.nome}</strong>
+                            <small>${sortedTalhoes.length} talhões</small>
+                        </div>
+                        <div class="farm-info-right">
+                            <span class="farm-total-area">${farmArea.toFixed(2)} ha</span>
+                            <i class="fa-solid fa-chevron-down toggle-icon"></i>
+                        </div>
+                    </div>
+                    <div class="farm-stat-details">
+                        ${plotsHTML || '<small>Sem talhões demarcados</small>'}
+                    </div>
+                </div>
+            `;
+        });
+
+        // MONTA O HTML FINAL
+        const finalHTML = `
+            <div class="stats-summary-grid">
+                <div class="stat-card-main">
+                    <h3>${totalFarms}</h3>
+                    <p>Fazendas</p>
+                </div>
+                <div class="stat-card-main">
+                    <h3>${totalGeneralHectares.toFixed(2)}</h3>
+                    <p>Total Hectares</p>
+                </div>
+            </div>
+
+            <h4 style="margin: 20px 0 10px 0; font-size: 0.9rem; color: var(--text-light); text-transform: uppercase;">Detalhamento por Fazenda</h4>
+            
+            <div>
+                ${farmsHTML}
+            </div>
+        `;
+
+        container.innerHTML = finalHTML;
+    });
+}
+
+// Pequena função auxiliar para o efeito de abrir/fechar (Acordeão)
+function toggleStatCard(headerElement) {
+    const card = headerElement.parentElement;
+    card.classList.toggle('open');
 }
 
 // Inicializa
