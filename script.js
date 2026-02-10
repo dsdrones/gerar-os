@@ -502,7 +502,6 @@ async function uploadFarm() {
     const uid = document.getElementById('farm-client-select').value;
     const file = document.getElementById('kml-file').files[0];
     
-    // Troquei alert por showToast error
     if(!nome || !numero || !uid || !file) {
         showToast("Por favor, preencha todos os campos.", "error");
         return;
@@ -514,17 +513,59 @@ async function uploadFarm() {
     
     geojson.features.forEach((f, i) => {
         if(f.geometry && f.geometry.type.includes('Polygon')) {
-            let raw = f.properties.plot_name || f.properties.Name || f.properties.name || `Talhão ${i+1}`;
-            let tNum = i + 1;
-            if(raw) {
-                let match = raw.toString().match(/(\d+)/);
-                if(match) tNum = parseInt(match[0]);
+            // --- 1. DETETIVE DE NOMES (Procura a coluna certa) ---
+            let foundName = null;
+            
+            // Se o KML foi convertido e tem propriedades
+            if (f.properties) {
+                // Lista de prioridade: plot_name > talhao > name > label
+                const priorityKeys = ['plot_name', 'talhao', 'plot', 'name', 'Name', 'label', 'description'];
+                const keys = Object.keys(f.properties);
+
+                for (const keyToFind of priorityKeys) {
+                    // Procura a chave ignorando maiúsculas/minúsculas (ex: Plot_Name ou plot_name)
+                    const realKey = keys.find(k => k.toLowerCase() === keyToFind.toLowerCase());
+                    if (realKey && f.properties[realKey]) {
+                        foundName = f.properties[realKey];
+                        break; // Achou! Para de procurar.
+                    }
+                }
             }
-            talhoes.push({ numero: tNum, nomeOriginal: raw, geometry: JSON.stringify(f.geometry) });
+            
+            // Se não achou nada, usa um genérico
+            let raw = foundName || `Talhão ${i+1}`;
+            
+            // --- 2. CORREÇÃO DO NÚMERO (Evita pegar o número da fazenda) ---
+            let tNum = i + 1; // Padrão: Sequencial (1, 2, 3...)
+            
+            if(raw) {
+                const rawStr = raw.toString();
+                
+                // Estratégia A: Procura explícito por "T01", "Talhão 10"
+                const matchExplicit = rawStr.match(/(?:T|Talhao|Talhão)[\s_-]*(\d+)/i);
+                
+                if (matchExplicit) {
+                    tNum = parseInt(matchExplicit[1]);
+                } else {
+                    // Estratégia B: Se não tem "T", pega todos os números da string
+                    const numbers = rawStr.match(/(\d+)/g);
+                    
+                    if (numbers) {
+                        // O TRUQUE: Pega o ÚLTIMO número encontrado.
+                        // Ex: "Fazenda 55 Talhão 02" -> O array é ["55", "02"]. Pegamos o "02".
+                        tNum = parseInt(numbers[numbers.length - 1]);
+                    }
+                }
+            }
+            
+            talhoes.push({ 
+                numero: tNum, 
+                nomeOriginal: raw, 
+                geometry: JSON.stringify(f.geometry) 
+            });
         }
     });
     
-    // Troquei alert por showToast error
     if(talhoes.length === 0) {
         showToast("O arquivo KML não contém polígonos válidos.", "error");
         return;
@@ -537,7 +578,6 @@ async function uploadFarm() {
         talhoes: talhoes, 
         criadoEm: new Date() 
     }).then(() => {
-        // --- AQUI ESTÁ A MUDANÇA PRINCIPAL ---
         showToast("Fazenda cadastrada com sucesso!", "success");
         
         // Limpa os campos
@@ -546,7 +586,7 @@ async function uploadFarm() {
         document.getElementById('kml-file').value = '';
         document.getElementById('file-name-display').innerText = '';
         
-        // Atualiza a lista no mapa se o cliente estiver selecionado
+        // Atualiza a lista no mapa
         const currentFilter = document.getElementById('map-admin-client-select').value;
         if(currentFilter === uid) {
             loadAdminFarmsList(uid);
@@ -848,10 +888,9 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
     if (!osMap) {
         osMap = L.map('os-map', {
             zoomControl: false,
-            // ZOOM SCROLL
-            zoomSnap: 0.05,          // De 0.1 para 0.05 (mais suave)
-            zoomDelta: 0.05,         // De 0.1 para 0.05
-            wheelPxPerZoomLevel: 500 // De 120 para 500 (Zoom bem lento e preciso)
+            zoomSnap: 0.05,
+            zoomDelta: 0.05,
+            wheelPxPerZoomLevel: 500
         }).setView([-14, -52], 5);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
@@ -878,46 +917,24 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
 
     osLayers.clearLayers(); osLabels.clearLayers();
     document.getElementById('os-legend-content').innerHTML = "";
-    // --- MUDANÇA: TÍTULO PADRÃO AUTOMÁTICO ---
     
-    // 1. Prepara os textos em MAIÚSCULO
+    // Configura Título e Logo
     const nomeCliente = osData.clientName ? osData.clientName.toUpperCase() : "CLIENTE";
     const tipoAplicacao = osData.tipoAplicacao ? osData.tipoAplicacao.toUpperCase() : "SERVIÇO";
-
-    // 2. Monta a frase: "CLIENTE - MAPA ESTRATÉGICO - TIPO"
     const tituloPadrao = `${nomeCliente} - MAPA ESTRATÉGICO - ${tipoAplicacao}`;
-
-    // 3. Aplica no campo e no mapa
     document.getElementById('cfg-title-text').value = tituloPadrao;
     updateOSTitle();
     
-    // CAMINHO DA IMAGEM: Pasta 'imagem' + Nome do arquivo
-    // ATENÇÃO: Verifique se o nome é 'logo.png', 'logo.jpg', etc.
     const urlSuaLogo = "imagem/logo.png"; 
-
     const imgLogo = document.getElementById('os-map-logo');
-    
     if(imgLogo) {
         imgLogo.src = urlSuaLogo;
-        
-        // Se a imagem não carregar (ex: nome errado), ele não mostra o ícone de "quebrado"
-        imgLogo.onerror = function() { 
-            console.warn("Logo não encontrada em: " + urlSuaLogo);
-            this.style.display = 'none'; // Esconde se der erro
-        };
-        imgLogo.onload = function() {
-            this.style.display = 'block'; // Mostra quando carregar
-        };
-
-        // Reseta o input de arquivo manual
+        imgLogo.onerror = function() { this.style.display = 'none'; };
+        imgLogo.onload = function() { this.style.display = 'block'; };
         document.getElementById('cfg-logo-file').value = ""; 
     }
-    // ==============================
 
-    // --- LIMPA A LISTA GLOBAL DE DADOS ---
     loadedOSFeatures = []; 
-    // -------------------------------------
-
     const bounds = L.latLngBounds(); let totalHectares = 0;
     const farmGroups = {};
     
@@ -936,7 +953,18 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
             const color = colors[colorIndex % colors.length];
             let farmHectares = 0;
 
-            f.talhoes.forEach(t => {
+            // Ordena os talhões para garantir organização visual
+            if(f.talhoes) {
+                f.talhoes.sort((a, b) => {
+                    const getNum = (str) => {
+                        const match = (str || "").toString().match(/(\d+)/g);
+                        return match ? parseInt(match[match.length-1]) : 9999;
+                    };
+                    return getNum(a.nomeOriginal) - getNum(b.nomeOriginal);
+                });
+            }
+
+            f.talhoes.forEach((t, index) => {
                 const dbName = t.nomeOriginal || `Talhão ${t.numero}`;
                 
                 if(targetNames.includes(dbName)) {
@@ -944,20 +972,29 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
                         const geoData = JSON.parse(t.geometry);
                         const area = turf.area(geoData) / 10000;
                         
-                        // --- SALVA OS DADOS NA LISTA GLOBAL ---
+                        // --- AQUI ESTÁ A CORREÇÃO ---
+                        // 1. Prioridade total para o nome original do talhão (MUCUIN, F02 T25, etc)
+                        let labelTitle = t.nomeOriginal;
+                        
+                        // 2. Só cria um nome automático se o original estiver vazio
+                        if(!labelTitle || labelTitle.trim() === "") {
+                            const fNum = String(f.numero).padStart(2,'0'); 
+                            const tNum = String(index + 1).padStart(2,'0');
+                            labelTitle = `F${fNum} T${tNum}`;
+                        }
+
                         loadedOSFeatures.push({
                             type: 'Feature',
                             properties: {
                                 farmName: f.nome,
                                 farmNumber: f.numero,
-                                plotName: dbName,
+                                plotName: labelTitle, // Usa o nome real
                                 plotNumber: t.numero,
                                 areaHa: area.toFixed(2),
                                 color: color
                             },
                             geometry: geoData
                         });
-                        // --------------------------------------
 
                         const poly = L.geoJSON(geoData, {
                             style: { color: 'black', weight: 1, fillColor: color, fillOpacity: 1 }
@@ -968,10 +1005,6 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
 
                         poly.addTo(osLayers);
                         bounds.extend(poly.getBounds());
-
-                        const fNum = String(f.numero).padStart(2,'0'); 
-                        const tNum = String(t.numero).padStart(2,'0');
-                        const labelTitle = `F${fNum} T${tNum}`; 
 
                         const center = turf.centerOfMass(geoData);
                         const labelHtml = `<div style="text-align:center; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff; line-height:1.2;">
