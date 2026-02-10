@@ -469,9 +469,24 @@
                 <div id="os-map-legend"><h4>LEGENDA</h4><div id="os-legend-content"></div></div>
             </div>
         </div>
-
+		
+		<div id="selection-summary-card" class="hidden">
+        <div class="summary-stat">
+            <span class="stat-label">Fazendas</span>
+            <span class="stat-value" id="summary-farms">0</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-stat">
+            <span class="stat-label">Talhões</span>
+            <span class="stat-value" id="summary-plots">0</span>
+        </div>
+        <div class="summary-divider"></div>
+        <div class="summary-stat">
+            <span class="stat-label">Área Total</span>
+            <span class="stat-value highlight" id="summary-area">0.00 ha</span>
+        </div>
     </div>
-	<button id="fab-os-mobile" onclick="requestOS()">
+    <button id="fab-os-mobile" onclick="requestOS()">
             <i class="fa-solid fa-file-contract"></i> Gerar OS (<span id="fab-count">0</span>)
         </button>
 

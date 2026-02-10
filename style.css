@@ -1739,3 +1739,78 @@ body.dark-mode .farm-stat-details { background: #0f172a; border-color: #334155; 
 body.dark-mode .plot-stat-row { border-color: #334155; color: #cbd5e1; }
 body.dark-mode .farm-total-area { background: #172554; color: #60a5fa; }
 body.dark-mode .farm-info-left strong { color: #f1f5f9; }
+
+/* ================================================================= */
+/* PAINEL DE RESUMO DA SELEÇÃO (NOVO)                                */
+/* ================================================================= */
+
+#selection-summary-card {
+    position: fixed;
+    bottom: 150px; /* Fica acima do botão FAB (que está a 90px) */
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    
+    background: white;
+    width: 90%;
+    max-width: 400px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    border: 1px solid var(--border);
+    z-index: 2147483647; /* Mesmo nível do FAB para ficar no topo */
+    
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+}
+
+/* Quando estiver visível (adicionado via JS) */
+#selection-summary-card.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+}
+
+.summary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 0.7rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.stat-value.highlight {
+    color: var(--accent); /* Azul destaque */
+}
+
+.summary-divider {
+    width: 1px;
+    height: 25px;
+    background-color: var(--border);
+}
+
+/* Modo Escuro */
+body.dark-mode #selection-summary-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+body.dark-mode .stat-value { color: #f1f5f9; }
+body.dark-mode .stat-value.highlight { color: #38bdf8; }

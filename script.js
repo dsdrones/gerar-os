@@ -41,7 +41,8 @@ let osLayers = L.layerGroup();
 let osLabels = L.layerGroup();
 let isPreviewMode = false;
 let loadedOSFeatures = [];
-
+// Variável para controlar se estamos EDITANDO ou CRIANDO
+let editingOSId = null;
 // Variável global para o Cluster
 let farmClusters = null;
 
@@ -196,7 +197,15 @@ function loadClientFarms(uid) {
 
             headerDiv.onclick = function() { groupDiv.classList.toggle('open'); };
 
-            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
+            // CÓDIGO NOVO (ORDENAÇÃO POR NOME "NATURAL")
+            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a, b) => {
+                // Pega o nome que está na tela (ou cria um se não tiver)
+                const nomeA = (a.nomeOriginal || `Talhão ${a.numero}`).trim();
+                const nomeB = (b.nomeOriginal || `Talhão ${b.numero}`).trim();
+
+                // O segredo: 'numeric: true' faz o computador entender que T2 vem antes de T10
+                return nomeA.localeCompare(nomeB, undefined, { numeric: true, sensitivity: 'base' });
+            }) : [];
 
             sortedTalhoes.forEach(t => {
                 try {
@@ -253,6 +262,7 @@ function loadClientFarms(uid) {
                     const checkbox = row.querySelector('input');
                     const locateBtn = row.querySelector('.btn-locate-plot');
 
+                    // --- SUBSTIUA A FUNÇÃO toggleSelection POR ESTA ---
                     function toggleSelection(forceState) {
                         const newState = (typeof forceState === 'boolean') ? forceState : !checkbox.checked;
                         checkbox.checked = newState;
@@ -265,13 +275,49 @@ function loadClientFarms(uid) {
                             row.classList.remove('active');
                         }
 
-                        const total = document.querySelectorAll('.chk-export:checked').length;
+                        // === NOVA LÓGICA DE CÁLCULO ===
+                        const allChecked = document.querySelectorAll('.chk-export:checked');
+                        const totalCount = allChecked.length;
+                        
+                        let totalArea = 0;
+                        let uniqueFarms = new Set(); // Set garante que não repita IDs
+
+                        allChecked.forEach(chk => {
+                            // Soma a área
+                            let area = parseFloat(chk.getAttribute('data-plot-area'));
+                            if(!isNaN(area)) totalArea += area;
+                            
+                            // Adiciona ID da fazenda na lista de únicos
+                            uniqueFarms.add(chk.getAttribute('data-farm-id'));
+                        });
+
+                        // Atualiza os textos da Janelinha
+                        const summaryCard = document.getElementById('selection-summary-card');
+                        if(summaryCard) {
+                            document.getElementById('summary-farms').innerText = uniqueFarms.size;
+                            document.getElementById('summary-plots').innerText = totalCount;
+                            document.getElementById('summary-area').innerText = totalArea.toFixed(2) + " ha";
+                            
+                            // Mostra ou esconde a janelinha
+                            if(totalCount > 0) {
+                                summaryCard.classList.remove('hidden');
+                                // Pequeno delay para animação CSS funcionar
+                                requestAnimationFrame(() => summaryCard.classList.add('visible'));
+                            } else {
+                                summaryCard.classList.remove('visible');
+                                setTimeout(() => summaryCard.classList.add('hidden'), 300);
+                            }
+                        }
+                        // ==============================
+
+                        // Mantém a lógica antiga do botão FAB
                         const fab = document.getElementById('fab-os-mobile');
                         if(fab) {
-                             document.getElementById('fab-count').innerText = total;
-                             if(total > 0) fab.classList.add('visible'); else fab.classList.remove('visible');
+                             document.getElementById('fab-count').innerText = totalCount;
+                             if(totalCount > 0) fab.classList.add('visible'); else fab.classList.remove('visible');
                         }
                     }
+                    // --- FIM DA SUBSTITUIÇÃO ---
 
                     checkbox.addEventListener('change', () => toggleSelection(checkbox.checked));
 
@@ -320,7 +366,6 @@ function loadClientFarms(uid) {
 // Variável temporária para guardar os itens selecionados antes de enviar
 let pendingOSItems = [];
 
-// 1. Função chamada pelo botão "Gerar OS" (Apenas abre a janela)
 function requestOS() {
     const chks = document.querySelectorAll('.chk-export:checked');
     if(chks.length === 0) return alert("Selecione pelo menos um talhão!");
@@ -334,18 +379,28 @@ function requestOS() {
             farmName: c.getAttribute('data-farm-name'),
             farmNum: c.getAttribute('data-farm-num'),
             realName: realName,
-			area: c.getAttribute('data-plot-area')
+            area: c.getAttribute('data-plot-area')
         });
     });
 
     // Atualiza o texto da modal
-    document.getElementById('os-summary-text').innerText = `Você selecionou ${pendingOSItems.length} mapas para processamento.`;
-    document.getElementById('os-type-input').value = ""; // Limpa o select
-    
-    // --- LINHA NOVA: Garante que o campo customizado comece escondido ---
-    document.getElementById('os-type-custom').style.display = 'none'; 
-    document.getElementById('os-type-custom').value = '';
-    // -------------------------------------------------------------------
+    if (editingOSId) {
+         document.getElementById('os-summary-text').innerText = `Editando: ${pendingOSItems.length} mapas selecionados.`;
+         // OBS: NÃO limpamos o 'os-type-input' aqui se estiver editando,
+         // para manter o valor que carregamos no startEditOS.
+    } else {
+         document.getElementById('os-summary-text').innerText = `Você selecionou ${pendingOSItems.length} mapas para processamento.`;
+         
+         // Se for NOVO pedido, aí sim limpa o formulário
+         document.getElementById('os-type-input').value = ""; 
+         document.getElementById('os-type-custom').style.display = 'none'; 
+         document.getElementById('os-type-custom').value = '';
+         
+         // Garante textos originais
+         const btnSend = document.querySelector('#new-os-modal .btn-success');
+         if(btnSend) btnSend.innerText = "Enviar Pedido";
+         document.querySelector('#new-os-modal h3').innerHTML = '<i class="fa-solid fa-paper-plane"></i> Confirmar Solicitação';
+    }
     
     // Abre a modal
     document.getElementById('new-os-modal').classList.remove('hidden');
@@ -384,16 +439,46 @@ function finalizeOS() {
     btnSend.innerText = "Processando...";
     btnSend.disabled = true;
 
-    // Objeto da OS
     const newOrder = {
         clientUid: user.uid,
         clientName: clientName,
-        status: 'pendente',
+        status: 'pendente', // Mantém pendente ao editar
         tipoAplicacao: type,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        // createdAt: NÃO ALTERAMOS A DATA DE CRIAÇÃO NA EDIÇÃO
         items: pendingOSItems,
         offlineCreated: false
     };
+
+    // --- LÓGICA NOVA: CRIAR OU ATUALIZAR ---
+    let promise;
+
+    if (editingOSId) {
+        // MODO EDIÇÃO: Atualiza o documento existente
+        newOrder.updatedAt = firebase.firestore.FieldValue.serverTimestamp(); // Marca quando editou
+        promise = db.collection('service_orders').doc(editingOSId).update(newOrder);
+    } else {
+        // MODO CRIAÇÃO: Cria novo (Mantém o original)
+        newOrder.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        promise = db.collection('service_orders').add(newOrder);
+    }
+
+    // Executa (seja criar ou editar)
+    promise.then(() => {
+        alert(editingOSId ? "Solicitação atualizada com sucesso!" : "Solicitação enviada com sucesso!");
+        resetOSForm();
+        
+        // Se estiver com o histórico aberto, recarrega ele
+        if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
+            openClientHistory();
+        }
+    })
+    .catch((error) => {
+        // ... (lógica de erro/offline mantém igual, só tome cuidado que update offline é mais complexo, 
+        // mas por hora se der erro de rede ele vai tentar salvar como novo no offline, o que é seguro)
+        console.warn("Erro: " + error);
+        if(!editingOSId) saveOfflineOrder(newOrder); // Só salva offline se for novo (por segurança)
+        else alert("Erro ao editar: Verifique sua conexão.");
+    });
 
     // --- FUNÇÃO AUXILIAR: Tenta enviar com limite de tempo ---
     const tryOnlineSend = () => {
@@ -449,8 +534,10 @@ function resetOSForm() {
         c.dispatchEvent(new Event('change')); 
     });
     closeOSModal();
+	editingOSId = null;
     const btn = document.querySelector('#new-os-modal .btn-success');
     if(btn) { btn.innerText = "Enviar Pedido"; btn.disabled = false; }
+    document.querySelector('#new-os-modal h3').innerHTML = '<i class="fa-solid fa-paper-plane"></i> Confirmar Solicitação';
 }
 
 function toggleMobileSidebar() { 
@@ -1171,12 +1258,34 @@ function openClientHistory() {
             loadedClientOrders.push({ id: doc.id, ...doc.data() });
         });
         
-        // Ordena
-        loadedClientOrders.sort((a, b) => b.createdAt.seconds - a.createdAt.seconds);
+        // --- CORREÇÃO 1: ORDENAÇÃO ROBUSTA ---
+        // Aceita tanto Timestamp do Firebase quanto Date normal
+        loadedClientOrders.sort((a, b) => {
+            const getTime = (d) => {
+                if (!d) return 0;
+                if (d.seconds) return d.seconds * 1000; // É do Firebase
+                if (d.getTime) return d.getTime();      // É Javascript Date (Edição/Offline)
+                return new Date(d).getTime();           // Tenta converter string
+            };
+            return getTime(b.createdAt) - getTime(a.createdAt);
+        });
 
         let html = "";
         loadedClientOrders.forEach(os => {
-            const date = new Date(os.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
+            
+            // --- CORREÇÃO 2: FORMATAÇÃO DA DATA ---
+            // Evita o erro "undefined reading seconds" na exibição
+            let dateObj;
+            if (os.createdAt && os.createdAt.seconds) {
+                dateObj = new Date(os.createdAt.seconds * 1000);
+            } else {
+                dateObj = new Date(os.createdAt);
+            }
+            // Se a data for inválida, mostra hoje
+            if (isNaN(dateObj.getTime())) dateObj = new Date();
+            
+            const date = dateObj.toLocaleDateString('pt-BR');
+            
             let statusClass = 'status-pendente'; let statusLabel = os.status;
             
             if(os.status === 'em analise') { statusClass = 'status-analise'; statusLabel = 'Em Análise'; }
@@ -1273,6 +1382,26 @@ function openOrderDetails(orderId) {
                 </div>
             </div>
         `;
+    }
+	
+	// --- LÓGICA DO BOTÃO EDITAR (NOVO) ---
+    const footerDiv = document.querySelector('#order-details-modal .modal-footer');
+    
+    // Remove botão de editar antigo se existir (para não duplicar)
+    const oldEditBtn = document.getElementById('btn-edit-os');
+    if(oldEditBtn) oldEditBtn.remove();
+
+    // Só permite editar se estiver PENDENTE
+    if(order.status === 'pendente') {
+        const editBtn = document.createElement('button');
+        editBtn.id = 'btn-edit-os';
+        editBtn.className = 'btn btn-primary'; 
+        editBtn.style.marginRight = 'auto'; // Joga para a esquerda
+        editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Pedido';
+        editBtn.onclick = function() { startEditOS(orderId); };
+        
+        // Adiciona no começo do rodapé
+        footerDiv.insertBefore(editBtn, footerDiv.firstChild);
     }
 
     // Abre a modal
@@ -1881,7 +2010,12 @@ function loadClientProfileStats(uid) {
             let plotsHTML = "";
             
             // Ordena os talhões
-            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a,b) => a.numero - b.numero) : [];
+            // Ordenação "Natural" (Igual à tela principal)
+            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a, b) => {
+                const nomeA = (a.nomeOriginal || `Talhão ${a.numero}`).trim();
+                const nomeB = (b.nomeOriginal || `Talhão ${b.numero}`).trim();
+                return nomeA.localeCompare(nomeB, undefined, { numeric: true, sensitivity: 'base' });
+            }) : [];
 
             // Loop pelos talhões para calcular área e montar lista
             sortedTalhoes.forEach(t => {
@@ -1949,6 +2083,72 @@ function loadClientProfileStats(uid) {
 
         container.innerHTML = finalHTML;
     });
+}
+
+function startEditOS(osId) {
+    // 1. Acha o pedido
+    const order = loadedClientOrders.find(o => o.id === osId);
+    if(!order) return;
+
+    // 2. Define modo de edição
+    editingOSId = osId;
+
+    // 3. FECHA TUDO (Histórico, Detalhes, etc)
+    closeOrderDetails();
+    document.getElementById('client-history-modal').classList.add('hidden');
+    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
+
+    // 4. VAI PARA A ABA LISTA
+    switchClientTab('tab-lista');
+
+    // 5. Limpa seleções visuais anteriores
+    document.querySelectorAll('.chk-export:checked').forEach(c => {
+        c.checked = false; 
+        c.dispatchEvent(new Event('change')); 
+    });
+
+    // 6. RE-SELECIONA OS TALHÕES DO PEDIDO
+    order.items.forEach(item => {
+        const selector = `.chk-export[data-farm-id="${item.farmId}"][data-plot-name="${item.realName}"]`;
+        const checkbox = document.querySelector(selector);
+        if(checkbox) {
+            checkbox.checked = true;
+            checkbox.dispatchEvent(new Event('change')); 
+        }
+    });
+
+    // 7. PREPARA O FORMULÁRIO (MAS MANTÉM ESCONDIDO)
+    // Preenche o tipo de aplicação que já estava salvo
+    const typeInput = document.getElementById('os-type-input');
+    const customInput = document.getElementById('os-type-custom');
+    
+    // Reseta primeiro
+    typeInput.value = "";
+    customInput.style.display = 'none';
+    customInput.value = "";
+
+    // Lógica para preencher o valor correto
+    if(order.tipoAplicacao) {
+        // Verifica se é um dos valores padrão do select
+        const options = Array.from(typeInput.options).map(o => o.value);
+        
+        if(options.includes(order.tipoAplicacao)) {
+            typeInput.value = order.tipoAplicacao;
+        } else {
+            // Se não for padrão, é "Outros"
+            typeInput.value = 'Outros';
+            customInput.style.display = 'block';
+            customInput.value = order.tipoAplicacao;
+        }
+    }
+
+    // 8. AJUSTA O TEXTO DO FORMULÁRIO PARA QUANDO ELE ABRIR
+    const btnSend = document.querySelector('#new-os-modal .btn-success');
+    btnSend.innerText = "Salvar Alterações"; // Muda texto do botão
+    document.querySelector('#new-os-modal h3').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Solicitação';
+
+    // 9. AVISO VISUAL (Opcional, mas bom para o usuário entender)
+    showToast("Modo de Edição: Adicione ou remova talhões, depois clique em Gerar OS.", "info");
 }
 
 // Pequena função auxiliar para o efeito de abrir/fechar (Acordeão)
