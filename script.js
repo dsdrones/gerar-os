@@ -2193,3 +2193,35 @@ function excluirOS(id) {
       .catch(e => alert("Erro ao excluir: " + e.message));
   }
 }
+
+async function limparOsDuplicadas() {
+  if(!confirm("Isso apagará registros repetidos (mesmo cliente, data, qtd de itens e serviço). Deseja continuar?")) return;
+  
+  try {
+    const snap = await db.collection('service_orders').get();
+    const seen = new Set();
+    let excluidas = 0;
+    
+    snap.forEach(doc => {
+      const os = doc.data();
+      // Cria uma chave única para identificar se a OS é idêntica a outra
+      const dataTxt = os.createdAt ? new Date(os.createdAt.seconds*1000).toLocaleDateString() : 'sem-data';
+      const chave = `${dataTxt}-${os.clientName}-${os.items ? os.items.length : 0}-${os.tipoAplicacao}`;
+      
+      if (seen.has(chave)) {
+        // Já vimos essa solicitação hoje -> Deleta a duplicada
+        db.collection('service_orders').doc(doc.id).delete();
+        excluidas++;
+      } else {
+        // Primeira vez vendo essa solicitação -> Guarda a chave
+        seen.add(chave);
+      }
+    });
+    
+    alert(`Limpeza concluída! ${excluidas} solicitações duplicadas foram removidas.`);
+  } catch(error) {
+    alert("Erro na limpeza: " + error.message);
+  }
+}
+
+
