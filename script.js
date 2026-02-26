@@ -950,7 +950,12 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
             if(os.status !== 'concluido' && os.status !== 'cancelado') {
                 buttonsHtml += `<button class="btn btn-success" style="padding:6px 10px;" onclick="finishOS('${doc.id}')" title="Marcar como Concluída"><i class="fa-solid fa-check"></i></button>`;
             }
-            // ---------------------------------
+            
+			buttonsHtml += `
+            <button onclick="excluirOS('${doc.id}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-left:5px;" title="Excluir OS">
+                  <i class="fa-solid fa-trash"></i>
+            </button>
+            `;
 
             tbody.innerHTML += `
                 <tr>
@@ -2170,4 +2175,21 @@ window.addEventListener('load', () => {
     updateOfflineBadge();
     // Tenta sincronizar ao abrir o app se tiver internet
     if(navigator.onLine) syncOfflineOrders();
+
 });
+
+// Função para excluir uma OS específica
+function excluirOS(id) {
+  if(confirm("Tem certeza que deseja excluir esta solicitação?")) {
+    db.collection('service_orders').doc(id).delete()
+      .then(() => {
+        // Usa a função showToast que já existe no seu sistema
+        if(typeof showToast === 'function') {
+          showToast("Solicitação excluída!", "success");
+        } else {
+          alert("Solicitação excluída com sucesso!");
+        }
+      })
+      .catch(e => alert("Erro ao excluir: " + e.message));
+  }
+}
