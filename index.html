@@ -135,7 +135,13 @@
                 </div>
 
                 <div id="tab-solicitacoes" class="hidden">
-                    <div class="section-header"><h2>Solicitações de Serviço</h2></div>
+                    <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+                          <h2>Solicitações de Serviço</h2>
+                          <button class="btn btn-danger" onclick="limparOsDuplicadas()" style="background: #dc3545; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer;">
+                    <i class="fa-solid fa-broom"></i> Limpar Duplicadas
+                    </button>
+                </div>
+
                     <div class="table-container">
                         <table id="os-table">
                             <thead>
@@ -495,4 +501,5 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
     <script src="script.js"></script>
 </body>
+
 </html>
