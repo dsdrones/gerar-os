@@ -412,119 +412,83 @@ function closeOSModal() {
 }
 
 function finalizeOS() {
-    // --- LÓGICA NOVA PARA PEGAR O TIPO ---
     const selectElement = document.getElementById('os-type-input');
     const customInputElement = document.getElementById('os-type-custom');
-    
-    let type = selectElement.value;
 
-    // Se escolheu "Outros", pega o valor digitado no campo de texto
+    let type = selectElement.value;
     if (type === 'Outros') {
-        type = customInputElement.value.trim(); // .trim() remove espaços vazios no começo/fim
+        type = customInputElement.value.trim();
     }
-    // -------------------------------------
-    
+
     if(!type) {
         alert("Por favor, selecione ou digite o Tipo de Aplicação.");
         return;
     }
 
-    // ... (O resto da função continua igual: const user = firebase...)
     const user = firebase.auth().currentUser;
     const clientName = document.getElementById('client-name-display').innerText;
     const btnSend = document.querySelector('#new-os-modal .btn-success');
-    const originalText = "Enviar Pedido"; // Texto original do botão
-    
-    // Feedback visual imediato
+
+    // 1. PREVENÇÃO DE DUPLO CLIQUE (Trava se já estiver enviando)
+    if (btnSend.disabled) return;
+
+    // Feedback visual e bloqueio imediato do botão
     btnSend.innerText = "Processando...";
     btnSend.disabled = true;
 
     const newOrder = {
         clientUid: user.uid,
         clientName: clientName,
-        status: 'pendente', // Mantém pendente ao editar
+        status: 'pendente',
         tipoAplicacao: type,
-        // createdAt: NÃO ALTERAMOS A DATA DE CRIAÇÃO NA EDIÇÃO
         items: pendingOSItems,
         offlineCreated: false
     };
 
-    // --- LÓGICA NOVA: CRIAR OU ATUALIZAR ---
-    let promise;
-
-    if (editingOSId) {
-        // MODO EDIÇÃO: Atualiza o documento existente
-        newOrder.updatedAt = firebase.firestore.FieldValue.serverTimestamp(); // Marca quando editou
-        promise = db.collection('service_orders').doc(editingOSId).update(newOrder);
-    } else {
-        // MODO CRIAÇÃO: Cria novo (Mantém o original)
-        newOrder.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-        promise = db.collection('service_orders').add(newOrder);
-    }
-
-    // Executa (seja criar ou editar)
-    promise.then(() => {
-        alert(editingOSId ? "Solicitação atualizada com sucesso!" : "Solicitação enviada com sucesso!");
-        resetOSForm();
-        
-        // Se estiver com o histórico aberto, recarrega ele
-        if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
-            openClientHistory();
-        }
-    })
-    .catch((error) => {
-        // ... (lógica de erro/offline mantém igual, só tome cuidado que update offline é mais complexo, 
-        // mas por hora se der erro de rede ele vai tentar salvar como novo no offline, o que é seguro)
-        console.warn("Erro: " + error);
-        if(!editingOSId) saveOfflineOrder(newOrder); // Só salva offline se for novo (por segurança)
-        else alert("Erro ao editar: Verifique sua conexão.");
-    });
-
-    // --- FUNÇÃO AUXILIAR: Tenta enviar com limite de tempo ---
-    const tryOnlineSend = () => {
-        return new Promise((resolve, reject) => {
-            // Define um limite de 3 segundos (3000ms)
-            const timeout = setTimeout(() => {
-                reject("Timeout: Internet muito lenta ou inexistente");
-            }, 3000);
-
-            db.collection('service_orders').add(newOrder)
-            .then((docRef) => {
-                clearTimeout(timeout); // Cancela o timer se deu certo
-                resolve(docRef);
-            })
-            .catch((err) => {
-                clearTimeout(timeout);
-                reject(err);
-            });
-        });
-    };
-
-    // --- LÓGICA DE DECISÃO ---
-    // Se o navegador diz que está offline, nem tenta enviar, salva direto.
+    // 2. SE ESTIVER TOTALMENTE OFFLINE, SALVA NO CELULAR
     if (!navigator.onLine) {
+        newOrder.createdAt = new Date();
+        newOrder.offlineCreated = true;
         saveOfflineOrder(newOrder);
         return;
     }
 
-    // Se diz que está online, TENTA enviar, mas com o cronômetro ligado
-    tryOnlineSend()
-    .then(() => {
-        // SUCESSO ONLINE
-        alert("Solicitação enviada com sucesso!");
-        resetOSForm();
-    })
-    .catch((error) => {
-        // FALHA (Erro ou Timeout) -> Joga pro Offline
-        console.warn("Envio online falhou (" + error + "). Salvando offline...");
-        
-        // Ajusta o objeto para modo offline (precisa de data fixa, não serverTimestamp)
-        newOrder.createdAt = new Date(); 
-        newOrder.offlineCreated = true;
-        
-        // Chama a função de salvar localmente
-        saveOfflineOrder(newOrder);
-    });
+    // 3. SE ESTIVER ONLINE, MANDA PARA O FIREBASE (UMA ÚNICA VEZ)
+    if (editingOSId) {
+        // --- MODO EDIÇÃO ---
+        newOrder.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
+        db.collection('service_orders').doc(editingOSId).update(newOrder)
+            .then(() => {
+                alert("Solicitação atualizada com sucesso!");
+                resetOSForm();
+                if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
+                    openClientHistory();
+                }
+            })
+            .catch((error) => {
+                console.error("Erro na edição:", error);
+                alert("Erro ao atualizar a solicitação. Tente novamente.");
+                resetOSForm();
+            });
+    } else {
+        // --- MODO CRIAÇÃO ---
+        newOrder.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+        db.collection('service_orders').add(newOrder)
+            .then(() => {
+                alert("Solicitação enviada com sucesso!");
+                resetOSForm();
+                if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
+                    openClientHistory();
+                }
+            })
+            .catch((error) => {
+                // Se der erro de rede durante o envio, aciona seu backup local
+                console.warn("Envio online falhou. Salvando no modo offline...", error);
+                newOrder.createdAt = new Date();
+                newOrder.offlineCreated = true;
+                saveOfflineOrder(newOrder);
+            });
+    }
 }
 
 // Função auxiliar para limpar o formulário
