@@ -1123,7 +1123,6 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
             });
 
             document.getElementById('os-legend-content').innerHTML += `<div class="legend-item"><div class="legend-color-box" style="background:${color}"></div><span>F${f.numero} - ${f.nome} (${farmHectares.toFixed(2)} ha)</span></div>`;
-            colorIndex++;
         }
     }
 
