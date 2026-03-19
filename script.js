@@ -999,14 +999,50 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
         farmGroups[i.farmId].push(i.realName); 
     });
 
-    const colors = ['#e74c3c', '#f1c40f', '#2ecc71', '#3498db', '#9b59b6'];
-    let colorIndex = 0;
+    // 1. Paleta gigante (peguei emprestado do seu outro sistema)
+    let colorPool = [
+        '#e74c3c', '#8e44ad', '#3498db', '#16a085', '#f1c40f', '#e67e22', '#e84118', 
+        '#8c7ae6', '#00a8ff', '#0097e6', '#44bd32', '#c23616', '#2f3542', '#2ed573', 
+        '#ff4757', '#5352ed', '#1e90ff', '#3742fa', '#2f3640', '#57606f', '#7bed9f', 
+        '#70a1ff', '#ff6b81', '#a4b0be', '#f6e58d', '#ffbe76', '#ff7979', '#badc58', 
+        '#f9ca24', '#f0932b', '#eb4d4b', '#6ab04c', '#7ed6df', '#e056fd', '#686de0', 
+        '#30336b', '#95afc0', '#22a6b3', '#be2edd', '#4834d4', '#130f40', '#6c5ce7', 
+        '#a29bfe', '#00b894', '#0984e3', '#fdcb6e', '#d63031', '#e17055', '#fd79a8'
+    ];
+    
+    // Array para guardar as cores que já usamos neste projeto
+    let usedColors = [];
 
     for (const [farmId, targetNames] of Object.entries(farmGroups)) {
         const farmDoc = await db.collection('fazendas').doc(farmId).get();
         if(farmDoc.exists) {
             const f = farmDoc.data();
-            const color = colors[colorIndex % colors.length];
+            
+            // --- NOVA LÓGICA DE COR INTELIGENTE ---
+            let color = "";
+            
+            // A. Se a fazenda já tem uma cor fixa salva no banco, usa ela!
+            if (f.cor) {
+                color = f.cor;
+                usedColors.push(color); // Avisa que essa cor já tá em uso
+            } else {
+                // B. Se não tem cor salva, sorteia uma da lista gigante que NÃO FOI USADA ainda
+                let availableColors = colorPool.filter(c => !usedColors.includes(c));
+                
+                // Se o projeto for absurdamente gigante e acabar as cores (50+ fazendas)
+                if (availableColors.length === 0) {
+                    availableColors = [...colorPool]; // Enche o tanque de cores de novo
+                    usedColors = []; 
+                }
+                
+                // Pega uma cor aleatória das que sobraram
+                const randomIndex = Math.floor(Math.random() * availableColors.length);
+                color = availableColors[randomIndex];
+                
+                // Avisa que essa cor acabou de ser usada
+                usedColors.push(color);
+            }
+            // --------------------------------------
             let farmHectares = 0;
 
             // Ordena os talhões para garantir organização visual
@@ -1039,10 +1075,21 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
                             labelTitle = `F${fNum} T${tNum}`;
                         }
 
+                        // --- SOLUÇÃO DOS NÚMEROS DA FAZENDA ---
+                        // Formata o nome da fazenda de forma inteligente ANTES de salvar
+                        let nomeFormatadoDaFazenda = f.nome;
+                        
+                        // Se a fazenda tem um número válido (maior que zero e não vazio), adiciona o "F0X - "
+                        if (f.numero && f.numero !== "" && f.numero > 0) {
+                            const fNumStr = String(f.numero).padStart(2, '0');
+                            nomeFormatadoDaFazenda = `F${fNumStr} - ${f.nome}`;
+                        }
+                        // ---------------------------------------
+
                         loadedOSFeatures.push({
                             type: 'Feature',
                             properties: {
-                                farmName: f.nome,
+                                farmName: nomeFormatadoDaFazenda, // <--- Agora envia o nome já formatado certinho!
                                 farmNumber: f.numero,
                                 plotName: labelTitle, // Usa o nome real
                                 plotNumber: t.numero,
