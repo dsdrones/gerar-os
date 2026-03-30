@@ -1,5 +1,5 @@
 /* ================================================================= */
-/* ESTILOS GERAIS E VARIÁVEIS                                     */
+/* ESTILOS GERAIS E VARIÁVEIS                                        */
 /* ================================================================= */
 :root {
     /* Paleta de Cores Principal - Baseada na Logo */
@@ -61,7 +61,7 @@ html, body {
 .hidden { display: none !important; }
 
 /* ================================================================= */
-/* TELA DE LOGIN                                                  */
+/* TELA DE LOGIN                                                     */
 /* ================================================================= */
 #login-overlay {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -83,7 +83,7 @@ html, body {
 .brand-logo { font-size: 3rem; color: var(--accent); display: block; margin-bottom: 10px; }
 
 /* ================================================================= */
-/* COMPONENTES (BOTÕES E INPUTS)                                  */
+/* COMPONENTES (BOTÕES E INPUTS)                                     */
 /* ================================================================= */
 .btn {
     padding: 12px 20px;
