@@ -136,16 +136,32 @@
 
                 <div id="tab-solicitacoes" class="hidden">
                     <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
-                          <h2>Solicitações de Serviço</h2>
-                          <button class="btn btn-danger" onclick="limparOsDuplicadas()" style="background: #dc3545; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer;">
-                    <i class="fa-solid fa-broom"></i> Limpar Duplicadas
-                    </button>
-                </div>
+                        <h2>Solicitações de Serviço</h2>
+                        <div>
+                            <button class="btn btn-primary" onclick="toggleMergeMode()" style="padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin-right: 5px;">
+                                <i class="fa-solid fa-link"></i> Unir OS
+                            </button>
+                            <button class="btn btn-danger" onclick="limparOsDuplicadas()" style="background: #dc3545; color: white; padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer;">
+                                <i class="fa-solid fa-broom"></i> Limpar Duplicadas
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="merge-action-panel" class="hidden" style="margin-bottom: 15px; padding: 15px; background: #e0f2fe; border: 2px dashed #0ea5e9; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100;">
+                        <span style="font-weight: bold; color: #0369a1;"><i class="fa-solid fa-circle-info"></i> Selecione as OS abaixo e clique em Confirmar.</span>
+                        <div>
+                            <button class="btn btn-danger" onclick="toggleMergeMode()" style="margin-right: 10px;">Cancelar</button>
+                            <button class="btn btn-success" onclick="executeMergeOS()"><i class="fa-solid fa-check"></i> Confirmar União</button>
+                        </div>
+                    </div>
 
                     <div class="table-container">
                         <table id="os-table">
                             <thead>
                                 <tr>
+                                    <th class="merge-checkbox-col hidden" style="width: 40px; text-align: center;">
+                                        <input type="checkbox" id="select-all-os" onclick="toggleSelectAllOS(this)">
+                                    </th>
                                     <th>Data</th>
                                     <th>Cliente</th>
                                     <th>Qtd. Itens</th>
@@ -156,7 +172,7 @@
                             <tbody></tbody>
                         </table>
                     </div>
-                </div>
+            </div>
             </div>
         </div>
 
