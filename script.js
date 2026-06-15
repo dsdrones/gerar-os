@@ -899,31 +899,43 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
             const os = doc.data();
             if(os.status === 'pendente') p++;
             
-            // Cores do Status
-            let sClass = 'color:#e67e22'; // Laranja
-            if(os.status === 'em analise') sClass = 'color:#2980b9'; // Azul
-            if(os.status === 'concluido') sClass = 'color:#27ae60'; // Verde
-            if(os.status === 'cancelado') sClass = 'color:#c0392b'; // Vermelho
+            let sClass = 'color:#e67e22'; 
+            if(os.status === 'em analise') sClass = 'color:#2980b9'; 
+            if(os.status === 'concluido') sClass = 'color:#27ae60'; 
+            if(os.status === 'cancelado') sClass = 'color:#c0392b'; 
 
             const tipoApp = os.tipoAplicacao ? os.tipoAplicacao : '-';
 
-            // --- LÓGICA DOS BOTÕES DE AÇÃO ---
             let buttonsHtml = `<button class="btn btn-primary" style="margin-right:5px; padding:6px 10px;" onclick="openOSEditor('${doc.id}')" title="Abrir Editor"><i class="fa-solid fa-map"></i></button>`;
             
-            // Só mostra o botão de concluir se ela NÃO estiver concluída nem cancelada
             if(os.status !== 'concluido' && os.status !== 'cancelado') {
                 buttonsHtml += `<button class="btn btn-success" style="padding:6px 10px;" onclick="finishOS('${doc.id}')" title="Marcar como Concluída"><i class="fa-solid fa-check"></i></button>`;
             }
             
-			buttonsHtml += `
+            buttonsHtml += `
             <button onclick="excluirOS('${doc.id}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-left:5px;" title="Excluir OS">
                   <i class="fa-solid fa-trash"></i>
             </button>
             `;
 
+            const checkCol = document.querySelector('.merge-checkbox-col');
+            const isHidden = !checkCol || checkCol.classList.contains('hidden');
+            const mergeColClass = isHidden ? 'hidden merge-cell' : 'merge-cell';
+
+            // CORREÇÃO: Tratamento seguro da data para evitar o erro null
+            let dataFormatada = 'Processando...';
+            if (os.createdAt && os.createdAt.seconds) {
+                dataFormatada = new Date(os.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
+            } else if (os.createdAt && os.createdAt.getTime) {
+                dataFormatada = os.createdAt.toLocaleDateString('pt-BR');
+            }
+
             tbody.innerHTML += `
                 <tr>
-                    <td>${new Date(os.createdAt.seconds*1000).toLocaleDateString()}</td>
+                    <td class="${mergeColClass}" style="text-align: center;">
+                        <input type="checkbox" class="chk-merge-os" value="${doc.id}" data-clientuid="${os.clientUid}" data-clientname="${os.clientName}" data-type="${tipoApp}">
+                    </td>
+                    <td>${dataFormatada}</td>
                     <td>${os.clientName}</td>
                     <td>${os.items.length} itens</td>
                     <td><strong>${tipoApp}</strong></td>
@@ -936,6 +948,113 @@ function closeModal() { document.getElementById('admin-modal').classList.add('hi
         if(p>0) { badge.style.display='inline-block'; badge.innerText=p; } 
         else badge.style.display='none';
     });
+}
+
+// ============================================
+// FUNÇÕES DE UNIR OS
+// ============================================
+
+function toggleMergeMode() {
+    const mergePanel = document.getElementById('merge-action-panel');
+    const headerCheckCol = document.querySelector('.merge-checkbox-col');
+    const rowChecks = document.querySelectorAll('.merge-cell');
+    const selectAllCheck = document.getElementById('select-all-os');
+    
+    mergePanel.classList.toggle('hidden');
+    if(headerCheckCol) headerCheckCol.classList.toggle('hidden');
+    
+    rowChecks.forEach(cell => {
+        cell.classList.toggle('hidden');
+    });
+
+    if (selectAllCheck) selectAllCheck.checked = false;
+    document.querySelectorAll('.chk-merge-os').forEach(c => c.checked = false);
+}
+
+function toggleSelectAllOS(masterCheckbox) {
+    document.querySelectorAll('.chk-merge-os').forEach(c => {
+        if (!c.closest('tr').classList.contains('hidden')) {
+            c.checked = masterCheckbox.checked;
+        }
+    });
+}
+
+async function executeMergeOS() {
+    const selected = document.querySelectorAll('.chk-merge-os:checked');
+    if(selected.length < 2) {
+        return alert("Selecione pelo menos duas OS para unir!");
+    }
+
+    let baseClientUid = null;
+    let baseClientName = null;
+    let baseType = null;
+    let valid = true;
+    let idsToMerge = [];
+
+    selected.forEach(chk => {
+        const clientUid = chk.getAttribute('data-clientuid');
+        const clientName = chk.getAttribute('data-clientname');
+        const type = chk.getAttribute('data-type');
+        
+        if (!baseClientUid) {
+            baseClientUid = clientUid;
+            baseClientName = clientName;
+            baseType = type;
+        } else {
+            if (clientUid !== baseClientUid || type !== baseType) {
+                valid = false;
+            }
+        }
+        idsToMerge.push(chk.value);
+    });
+
+    if (!valid) {
+        return alert("Atenção! Você só pode unir OS que sejam do mesmo Cliente e do mesmo Tipo de Aplicação.");
+    }
+
+    if(!confirm(`Deseja realmente unir ${selected.length} OS selecionadas em uma única? As originais serão apagadas.`)) return;
+
+    try {
+        let combinedItems = [];
+        
+        for (let id of idsToMerge) {
+            const doc = await db.collection('service_orders').doc(id).get();
+            if(doc.exists) {
+                const data = doc.data();
+                if(data.items && data.items.length > 0) {
+                    combinedItems = combinedItems.concat(data.items);
+                }
+            }
+        }
+
+        const novaOS = {
+            clientUid: baseClientUid,
+            clientName: baseClientName,
+            status: 'pendente',
+            tipoAplicacao: baseType,
+            items: combinedItems,
+            offlineCreated: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await db.collection('service_orders').add(novaOS);
+
+        for (let id of idsToMerge) {
+            await db.collection('service_orders').doc(id).delete();
+        }
+
+        if(typeof showToast === 'function') {
+            showToast("Solicitações unidas com sucesso!", "success");
+        } else {
+            alert("Solicitações unidas com sucesso!");
+        }
+        
+        toggleMergeMode();
+
+    } catch (error) {
+        console.error("Erro ao unir:", error);
+        alert("Erro ao unir as OS. Verifique sua conexão com a internet.");
+    }
 }
 
     async function openOSEditor(osId) {
@@ -2214,16 +2333,13 @@ async function limparOsDuplicadas() {
     
     snap.forEach(doc => {
       const os = doc.data();
-      // Cria uma chave única para identificar se a OS é idêntica a outra
       const dataTxt = os.createdAt ? new Date(os.createdAt.seconds*1000).toLocaleDateString() : 'sem-data';
       const chave = `${dataTxt}-${os.clientName}-${os.items ? os.items.length : 0}-${os.tipoAplicacao}`;
       
       if (seen.has(chave)) {
-        // Já vimos essa solicitação hoje -> Deleta a duplicada
         db.collection('service_orders').doc(doc.id).delete();
         excluidas++;
       } else {
-        // Primeira vez vendo essa solicitação -> Guarda a chave
         seen.add(chave);
       }
     });
@@ -2232,6 +2348,142 @@ async function limparOsDuplicadas() {
   } catch(error) {
     alert("Erro na limpeza: " + error.message);
   }
+}
+
+// ============================================
+// FUNÇÕES DE UNIR OS
+// ============================================
+
+function toggleMergeMode() {
+    const mergePanel = document.getElementById('merge-action-panel');
+    const headerCheckCol = document.querySelector('.merge-checkbox-col');
+    
+    if (!mergePanel) return;
+
+    if (mergePanel.classList.contains('hidden')) {
+        // Abre o modo de união
+        mergePanel.classList.remove('hidden');
+        if(headerCheckCol) headerCheckCol.classList.remove('hidden');
+        document.querySelectorAll('.merge-cell').forEach(cell => cell.classList.remove('hidden'));
+    } else {
+        // Fecha e limpa as seleções
+        mergePanel.classList.add('hidden');
+        if(headerCheckCol) headerCheckCol.classList.add('hidden');
+        document.querySelectorAll('.merge-cell').forEach(cell => cell.classList.add('hidden'));
+        
+        const selectAllCheck = document.getElementById('select-all-os');
+        if (selectAllCheck) selectAllCheck.checked = false;
+        document.querySelectorAll('.chk-merge-os').forEach(c => c.checked = false);
+    }
+}
+
+function toggleSelectAllOS(masterCheckbox) {
+    document.querySelectorAll('.chk-merge-os').forEach(c => {
+        if (!c.closest('tr').classList.contains('hidden')) {
+            c.checked = masterCheckbox.checked;
+        }
+    });
+}
+
+async function executeMergeOS() {
+    try {
+        const btnConfirm = document.querySelector('#merge-action-panel .btn-success');
+        if (btnConfirm && btnConfirm.disabled) return; 
+
+        const selected = document.querySelectorAll('.chk-merge-os:checked');
+        if(selected.length < 2) {
+            if(typeof showToast === 'function') showToast("Selecione pelo menos duas OS para unir!", "error");
+            else alert("Selecione pelo menos duas OS para unir!");
+            return;
+        }
+
+        let baseClientName = null;
+        let baseType = null;
+        let valid = true;
+        let idsToMerge = [];
+
+        selected.forEach(chk => {
+            const clientName = (chk.getAttribute('data-clientname') || "").trim().toLowerCase();
+            const type = (chk.getAttribute('data-type') || "").trim().toLowerCase();
+            
+            if (baseClientName === null) {
+                baseClientName = clientName;
+                baseType = type;
+            } else {
+                if (clientName !== baseClientName || type !== baseType) {
+                    valid = false;
+                }
+            }
+            idsToMerge.push(chk.value);
+        });
+
+        if (!valid) {
+            if(typeof showToast === 'function') showToast("Atenção! As OS precisam ser do mesmo Cliente e Tipo.", "error");
+            else alert("Atenção! As OS precisam ser do mesmo Cliente e Tipo.");
+            return;
+        }
+
+        // Removido o confirm() que travava o navegador. Ação agora é direta.
+        
+        if (btnConfirm) {
+            btnConfirm.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Unindo OS...';
+            btnConfirm.disabled = true;
+        }
+
+        let combinedItems = [];
+        let realClientUid = selected[0].getAttribute('data-clientuid');
+        let realClientName = selected[0].getAttribute('data-clientname');
+        let realType = selected[0].getAttribute('data-type');
+        
+        if (!realClientUid || realClientUid === "undefined" || realClientUid === "null") realClientUid = "";
+        if (!realClientName || realClientName === "undefined" || realClientName === "null") realClientName = "";
+        if (!realType || realType === "undefined" || realType === "null") realType = "";
+
+        for (let id of idsToMerge) {
+            const doc = await db.collection('service_orders').doc(id).get();
+            if(doc.exists) {
+                const data = doc.data();
+                if(data.items && Array.isArray(data.items)) {
+                    combinedItems = combinedItems.concat(data.items);
+                }
+            }
+        }
+
+        const novaOS = {
+            clientUid: realClientUid,
+            clientName: realClientName,
+            status: 'pendente',
+            tipoAplicacao: realType,
+            items: combinedItems,
+            offlineCreated: false,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        };
+
+        await db.collection('service_orders').add(novaOS);
+
+        if(typeof showToast === 'function') {
+            showToast("Nova OS unificada gerada com sucesso!", "success");
+        } else {
+            alert("Nova OS unificada gerada com sucesso!");
+        }
+        
+        // Garante que o painel será fechado em segurança
+        const mergePanel = document.getElementById('merge-action-panel');
+        if (mergePanel && !mergePanel.classList.contains('hidden')) {
+            toggleMergeMode();
+        }
+
+    } catch (error) {
+        console.error("Erro ao unir:", error);
+        if(typeof showToast === 'function') showToast("Erro: " + error.message, "error");
+        else alert("Erro ao unir as OS. Detalhes: " + error.message);
+    } finally {
+        const btnConfirm = document.querySelector('#merge-action-panel .btn-success');
+        if (btnConfirm) {
+            btnConfirm.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar União';
+            btnConfirm.disabled = false;
+        }
+    }
 }
 
 
