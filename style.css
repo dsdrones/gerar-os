@@ -1,2489 +1,1816 @@
-// ============================================
-// CONFIGURAÇÃO DO FIREBASE
-// ============================================
-const firebaseConfig = {
-    apiKey: "AIzaSyBydEyUgO4QSwB6o3OxHn33vp22XFc5tKU",
-    authDomain: "sistemafazendas.firebaseapp.com",
-    databaseURL: "https://sistemafazendas-default-rtdb.firebaseio.com",
-    projectId: "sistemafazendas",
-    storageBucket: "sistemafazendas.firebasestorage.app",
-    messagingSenderId: "155248754394",
-    appId: "1:155248754394:web:cf6a4733c32ed3bc7f6fe3",
-    measurementId: "G-VNZRBCNM3D"
-};
-
-// Inicializa o App Principal
-const app = firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.firestore();
-
-// Inicializa o App Secundário (Para criar contas de cliente)
-const secondaryApp = firebase.initializeApp(firebaseConfig, "Secondary");
-const secondaryAuth = secondaryApp.auth();
-
-// --- ATIVAÇÃO DO MODO OFFLINE (CLÁSSICO) ---
-// Configura o cache para funcionar sem internet
-db.enablePersistence({ synchronizeTabs: true })
-    .then(() => {
-        console.log("Modo Offline ativado com sucesso!");
-    })
-    .catch((err) => {
-        if (err.code == 'failed-precondition') {
-            console.log("Aviso: Múltiplas abas abertas. O modo offline funciona melhor em uma só aba.");
-        } else if (err.code == 'unimplemented') {
-            console.log("Aviso: Este navegador não suporta salvamento offline.");
-        }
-    });
-
-// Variáveis Globais
-let map, adminMap, osMap; 
-let osLayers = L.layerGroup();
-let osLabels = L.layerGroup();
-let isPreviewMode = false;
-let loadedOSFeatures = [];
-// Variável para controlar se estamos EDITANDO ou CRIANDO
-let editingOSId = null;
-// Variável global para o Cluster
-let farmClusters = null;
-
-// --- LOGIN ---
-auth.onAuthStateChanged(async (user) => {
-    if (user) {
-        const userDoc = await db.collection('users').doc(user.uid).get();
-        if (userDoc.exists) {
-            const role = userDoc.data().role;
-            document.getElementById('login-overlay').classList.add('hidden');
-            document.getElementById('main-wrapper').classList.remove('hidden');
-            
-            if (localStorage.getItem('ds-theme') === 'dark') {
-                document.body.classList.add('dark-mode');
-                updateThemeIcons(true);
-            }
-
-            if (role === 'admin') {
-                document.getElementById('admin-interface').classList.remove('hidden');
-                loadClientsForAdmin();
-                loadClientsForMapFilter();
-                loadServiceOrders();
-            } else {
-                document.getElementById('client-interface').classList.remove('hidden');
-                document.getElementById('client-name-display').innerText = userDoc.data().nome.split(' ')[0];
-				loadClientProfileStats(user.uid);
-                setTimeout(() => { 
-				initMap(); 
-                if(map) map.invalidateSize();
-                loadClientFarms(user.uid); 
-                }, 300);
-            }
-        } else {
-            alert("Usuário não encontrado."); auth.signOut();
-        }
-    } else {
-        document.getElementById('login-overlay').classList.remove('hidden');
-        document.getElementById('main-wrapper').classList.add('hidden');
-    }
-});
-
-function login() { const e = document.getElementById('email').value;
-const p = document.getElementById('password').value; 
-auth.signInWithEmailAndPassword(e, p)
-.catch(err => alert("Erro: " + err.message)); }
-
-function logout() { auth.signOut(); location.reload(); }
-function toggleTheme() { document.body.classList.toggle('dark-mode'); localStorage.setItem('ds-theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light'); updateThemeIcons(document.body.classList.contains('dark-mode')); }
-function updateThemeIcons(isDark) { document.querySelectorAll('.fa-moon, .fa-sun').forEach(icon => { if (isDark) { icon.classList.remove('fa-moon'); icon.classList.add('fa-sun'); } else { icon.classList.remove('fa-sun'); icon.classList.add('fa-moon'); } }); }
-
-// ============================================
-// CLIENTE
-// ============================================
-function initMap() {
-    if(map) return;
+/* ================================================================= */
+/* ESTILOS GERAIS E VARIÁVEIS                                        */
+/* ================================================================= */
+:root {
+    /* Paleta de Cores Principal - Baseada na Logo */
+    --primary: #101647;       /* Azul Escuro Profundo (Menus laterais, cabeçalhos) */
+    --primary-light: #1a237e; /* Azul um pouco mais claro (Cards em modo escuro, hovers) */
+    --accent: #1C38C8;        /* Azul Vibrante da Logo (Botões, links, destaques, ícones ativos) */
+    --accent-hover: #152b99;  /* Azul Vibrante mais escuro (Ao passar o mouse) */
+    --success: #38E038;       /* Verde Brilhante da Logo (Sucesso, salvar, confirmar) */
+    --danger: #ef4444;        /* Vermelho (Erro, excluir - Mantido um padrão) */
     
-    // 1. Configuração Otimizada do Mapa
-    map = L.map('map', {
-        zoomControl: false,
-        preferCanvas: true,        // Turbo ativado (GPU)
-        zoomSnap: 0.5,             // Zoom suave
-        zoomDelta: 0.5,
-        wheelPxPerZoomLevel: 120,
-        minZoom: 4,
-        maxZoom: 22
-    }).setView([-14.2350, -51.9253], 4);
+    /* Cores de Fundo e Texto (Modo Claro - Ajustadas para combinar) */
+    --bg-body: #F1F5F9;       /* Fundo da página (Cinza azulado bem claro) */
+    --text-main: #101647;     /* Texto principal (Usando o azul escuro da marca) */
+    --text-light: #64748b;    /* Texto secundário (Cinza para contraste) */
+    --border: #e2e8f0;        /* Cor das bordas (Cinza claro) */
+    --white: #ffffff;         /* Branco padrão */
     
-    L.tileLayer('https://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',{
-        maxZoom: 20, 
-        subdomains:['mt0','mt1','mt2','mt3']
-    }).addTo(map);
-    
-    L.control.zoom({position: 'bottomright'}).addTo(map);
-
-    // 2. INICIALIZA O GRUPO DE CLUSTERS
-    // Isso cria a lógica de agrupar as bolinhas
-    farmClusters = L.markerClusterGroup({
-        // --- AQUI É A REGULAGEM DE DISTÂNCIA ---
-        maxClusterRadius: 30,       // Tente 40. (Padrão é 80). Quanto MENOR, mais cedo aparece.
-        
-        // Outra opção útil: Forçar aparecer tudo num zoom específico
-        // disableClusteringAtZoom: 15, // Se descomentar, no zoom 15 tudo se abre na marra
-        
-        showCoverageOnHover: false,
-        zoomToBoundsOnClick: true,
-        spiderfyOnMaxZoom: true,
-        removeOutsideVisibleBounds: true,
-        
-        iconCreateFunction: function(cluster) {
-            return L.divIcon({ 
-                html: '<div style="background-color:rgba(37, 99, 235, 0.9); color:white; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; border:2px solid white; box-shadow:0 0 5px rgba(0,0,0,0.5);">' + cluster.getChildCount() + '</div>', 
-                className: 'my-cluster-icon', 
-                iconSize: L.point(30, 30) 
-            });
-        }
-    });
-    
-    map.addLayer(farmClusters);
-
-    // Botão de GPS
-    addLocationControl();
-    map.on('locationfound', onLocationFound);
-    map.on('locationerror', onLocationError);
+    /* Sombra Suave */
+    --shadow: 0 4px 6px -1px rgba(16, 22, 71, 0.1); /* Sombra com um toque do azul principal */
 }
 
-function loadClientFarms(uid) {
-    const list = document.getElementById('farms-list');
-    list.innerHTML = "<div style='text-align:center; padding:20px; color:#777'><i class='fa-solid fa-circle-notch fa-spin'></i> Carregando mapas...</div>";
-    
-    if(farmClusters) farmClusters.clearLayers();
-    
-    map.eachLayer(layer => {
-        if (layer instanceof L.Path && !layer._url) map.removeLayer(layer);
-    });
+/* ================================================================= */
+/* AJUSTES PARA SENSAÇÃO DE APP NATIVO (MOBILE)                      */
+/* ================================================================= */
 
-    db.collection('fazendas').where('donoUID', '==', uid).get().then(snap => {
-        list.innerHTML = "";
-        if(snap.empty) { 
-            list.innerHTML = "<div style='padding:20px; text-align:center; color:#777'>Nenhuma fazenda encontrada.</div>"; 
-            return; 
-        }
-        
-        const bounds = L.latLngBounds();
-        const fragment = document.createDocumentFragment(); 
-
-        // --- MUDANÇA AQUI: CRIAR ARRAY E ORDENAR ---
-        let farmsArray = [];
-        snap.forEach(doc => farmsArray.push(doc));
-
-        // Ordena do menor para o maior (F01, F02, F03...)
-        farmsArray.sort((a, b) => {
-            let numA = a.data().numero || 0; // Se não tiver número, considera 0
-            let numB = b.data().numero || 0;
-            return numA - numB;
-        });
-        // -------------------------------------------
-        
-        // Agora fazemos o loop na lista JÁ ORDENADA
-        farmsArray.forEach(doc => {
-            const f = doc.data();
-            const fNum = String(f.numero).padStart(2,'0'); // Garante o 0 na frente (01, 02)
-            
-            const groupDiv = document.createElement('div');
-            groupDiv.className = 'farm-group'; 
-            
-            const headerDiv = document.createElement('div');
-            headerDiv.className = 'farm-header';
-            headerDiv.innerHTML = `<span>F${fNum} - ${f.nome}</span><i class="fa-solid fa-chevron-down farm-arrow"></i>`;
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'farm-content';
-
-            headerDiv.onclick = function() { groupDiv.classList.toggle('open'); };
-
-            // CÓDIGO NOVO (ORDENAÇÃO POR NOME "NATURAL")
-            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a, b) => {
-                // Pega o nome que está na tela (ou cria um se não tiver)
-                const nomeA = (a.nomeOriginal || `Talhão ${a.numero}`).trim();
-                const nomeB = (b.nomeOriginal || `Talhão ${b.numero}`).trim();
-
-                // O segredo: 'numeric: true' faz o computador entender que T2 vem antes de T10
-                return nomeA.localeCompare(nomeB, undefined, { numeric: true, sensitivity: 'base' });
-            }) : [];
-
-            sortedTalhoes.forEach(t => {
-                try {
-                    const geoData = (typeof t.geometry === 'string') ? JSON.parse(t.geometry) : t.geometry;
-                    const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
-                    const areaM2 = turf.area(geoData);
-                    const areaHa = (areaM2 / 10000).toFixed(2); 
-
-                    // 1. Polígono
-                    const poly = L.geoJSON(geoData, {
-                        smoothFactor: 5.0, 
-                        style: {color:'#ffffff', weight:2, fillOpacity:0.1}
-                    });
-
-                    bounds.extend(poly.getBounds());
-
-                    // 2. Marcador do Nome
-                    const center = turf.centerOfMass(geoData);
-                    const latlng = [center.geometry.coordinates[1], center.geometry.coordinates[0]];
-                    
-                    const labelIcon = L.divIcon({ 
-                        className: 'client-plot-label', 
-                        html: `<div style="text-align:center; text-shadow: -1px -1px 0 #000, 1px -1px 0 #000; cursor:pointer;">
-                                 <b>${displayName}</b><br>
-                                 <span style="font-size:0.9em">${areaHa} ha</span>
-                               </div>`,
-                        iconSize: [100, 40],
-                        iconAnchor: [50, 20]
-                    });
-
-                    const labelMarker = L.marker(latlng, { icon: labelIcon });
-
-                    labelMarker.on('add', () => { poly.addTo(map); });
-                    labelMarker.on('remove', () => { poly.remove(); });
-
-                    farmClusters.addLayer(labelMarker); 
-
-                    // 3. Lista (COM BOTÃO DE MAPA)
-                    const row = document.createElement('div');
-                    row.className = 'plot-item';
-                    
-                    row.innerHTML = `
-                        <input type="checkbox" class="chk-export" 
-                            data-farm-id="${doc.id}" data-farm-name="${f.nome}" data-farm-num="${f.numero}"
-                            data-plot-name="${displayName}" data-plot-area="${areaHa}"> 
-                        
-                        <span>${displayName}</span>
-                        
-                        <button class="btn-locate-plot" title="Ver no Mapa">
-                            <i class="fa-solid fa-location-crosshairs"></i>
-                        </button>
-                    `;
-                    
-                    const checkbox = row.querySelector('input');
-                    const locateBtn = row.querySelector('.btn-locate-plot');
-
-                    // --- SUBSTIUA A FUNÇÃO toggleSelection POR ESTA ---
-                    function toggleSelection(forceState) {
-                        const newState = (typeof forceState === 'boolean') ? forceState : !checkbox.checked;
-                        checkbox.checked = newState;
-
-                        if(newState) {
-                            poly.setStyle({color: '#ffcc00', weight: 3, fillOpacity: 0.6});
-                            row.classList.add('active');
-                        } else {
-                            poly.setStyle({color: '#ffffff', weight: 2, fillOpacity: 0.1});
-                            row.classList.remove('active');
-                        }
-
-                        // === NOVA LÓGICA DE CÁLCULO ===
-                        const allChecked = document.querySelectorAll('.chk-export:checked');
-                        const totalCount = allChecked.length;
-                        
-                        let totalArea = 0;
-                        let uniqueFarms = new Set(); // Set garante que não repita IDs
-
-                        allChecked.forEach(chk => {
-                            // Soma a área
-                            let area = parseFloat(chk.getAttribute('data-plot-area'));
-                            if(!isNaN(area)) totalArea += area;
-                            
-                            // Adiciona ID da fazenda na lista de únicos
-                            uniqueFarms.add(chk.getAttribute('data-farm-id'));
-                        });
-
-                        // Atualiza os textos da Janelinha
-                        const summaryCard = document.getElementById('selection-summary-card');
-                        if(summaryCard) {
-                            document.getElementById('summary-farms').innerText = uniqueFarms.size;
-                            document.getElementById('summary-plots').innerText = totalCount;
-                            document.getElementById('summary-area').innerText = totalArea.toFixed(2) + " ha";
-                            
-                            // Mostra ou esconde a janelinha
-                            if(totalCount > 0) {
-                                summaryCard.classList.remove('hidden');
-                                // Pequeno delay para animação CSS funcionar
-                                requestAnimationFrame(() => summaryCard.classList.add('visible'));
-                            } else {
-                                summaryCard.classList.remove('visible');
-                                setTimeout(() => summaryCard.classList.add('hidden'), 300);
-                            }
-                        }
-                        // ==============================
-
-                        // Mantém a lógica antiga do botão FAB
-                        const fab = document.getElementById('fab-os-mobile');
-                        if(fab) {
-                             document.getElementById('fab-count').innerText = totalCount;
-                             if(totalCount > 0) fab.classList.add('visible'); else fab.classList.remove('visible');
-                        }
-                    }
-                    // --- FIM DA SUBSTITUIÇÃO ---
-
-                    checkbox.addEventListener('change', () => toggleSelection(checkbox.checked));
-
-                    row.addEventListener('click', (e) => {
-                        if(e.target.closest('.btn-locate-plot') || e.target === checkbox) return;
-                        toggleSelection(); 
-                    });
-
-                    locateBtn.addEventListener('click', (e) => {
-                        e.stopPropagation(); 
-                        farmClusters.zoomToShowLayer(labelMarker, () => {
-                            map.panTo(latlng);
-                            poly.openTooltip(); 
-                        });
-                        switchClientTab('tab-mapa');
-                    });
-
-                    poly.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e); 
-                        toggleSelection(); 
-                        groupDiv.classList.add('open');
-                        row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    });
-
-                    labelMarker.on('click', (e) => {
-                        L.DomEvent.stopPropagation(e); 
-                        toggleSelection();             
-                        groupDiv.classList.add('open'); 
-                    });
-
-                    contentDiv.appendChild(row);
-
-                } catch(e){ console.warn("Erro talhão:", e); }
-            });
-
-            groupDiv.appendChild(headerDiv);
-            groupDiv.appendChild(contentDiv);
-            fragment.appendChild(groupDiv);
-        });
-        
-        list.appendChild(fragment);
-        if(!snap.empty) setTimeout(() => { map.fitBounds(bounds); }, 500);
-    });
+* {
+    -webkit-tap-highlight-color: transparent;
 }
 
-// Variável temporária para guardar os itens selecionados antes de enviar
-let pendingOSItems = [];
-
-function requestOS() {
-    const chks = document.querySelectorAll('.chk-export:checked');
-    if(chks.length === 0) return alert("Selecione pelo menos um talhão!");
-    
-    // Guarda os itens na memória
-    pendingOSItems = [];
-    chks.forEach(c => {
-        const realName = c.getAttribute('data-plot-name');
-        pendingOSItems.push({
-            farmId: c.getAttribute('data-farm-id'),
-            farmName: c.getAttribute('data-farm-name'),
-            farmNum: c.getAttribute('data-farm-num'),
-            realName: realName,
-            area: c.getAttribute('data-plot-area')
-        });
-    });
-
-    // Atualiza o texto da modal
-    if (editingOSId) {
-         document.getElementById('os-summary-text').innerText = `Editando: ${pendingOSItems.length} mapas selecionados.`;
-         // OBS: NÃO limpamos o 'os-type-input' aqui se estiver editando,
-         // para manter o valor que carregamos no startEditOS.
-    } else {
-         document.getElementById('os-summary-text').innerText = `Você selecionou ${pendingOSItems.length} mapas para processamento.`;
-         
-         // Se for NOVO pedido, aí sim limpa o formulário
-         document.getElementById('os-type-input').value = ""; 
-         document.getElementById('os-type-custom').style.display = 'none'; 
-         document.getElementById('os-type-custom').value = '';
-         
-         // Garante textos originais
-         const btnSend = document.querySelector('#new-os-modal .btn-success');
-         if(btnSend) btnSend.innerText = "Enviar Pedido";
-         document.querySelector('#new-os-modal h3').innerHTML = '<i class="fa-solid fa-paper-plane"></i> Confirmar Solicitação';
-    }
-    
-    // Abre a modal
-    document.getElementById('new-os-modal').classList.remove('hidden');
+.nav-item, .btn, .farm-header, .profile-card, .mobile-header h2 {
+    user-select: none;
+    -webkit-user-select: none;
 }
 
-// 2. Função para Fechar a Janela
-function closeOSModal() {
-    document.getElementById('new-os-modal').classList.add('hidden');
+#farms-list::-webkit-scrollbar, 
+#client-content-area::-webkit-scrollbar,
+#config-panel::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
 }
 
-function finalizeOS() {
-    const selectElement = document.getElementById('os-type-input');
-    const customInputElement = document.getElementById('os-type-custom');
+.bottom-navbar {
+    padding-bottom: env(safe-area-inset-bottom); 
+    height: calc(60px + env(safe-area-inset-bottom));
+}
 
-    let type = selectElement.value;
-    if (type === 'Outros') {
-        type = customInputElement.value.trim();
-    }
+* { box-sizing: border-box; outline: none; }
 
-    if(!type) {
-        alert("Por favor, selecione ou digite o Tipo de Aplicação.");
-        return;
-    }
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-body);
+    color: var(--text-main);
+    overflow: hidden; 
+}
 
-    const user = firebase.auth().currentUser;
-    const clientName = document.getElementById('client-name-display').innerText;
-    const btnSend = document.querySelector('#new-os-modal .btn-success');
+.hidden { display: none !important; }
 
-    // 1. PREVENÇÃO DE DUPLO CLIQUE (Trava se já estiver enviando)
-    if (btnSend.disabled) return;
+/* ================================================================= */
+/* TELA DE LOGIN                                                     */
+/* ================================================================= */
+#login-overlay {
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: linear-gradient(135deg, var(--primary) 0%, #1e1b4b 100%);
+    z-index: 9999;
+    display: flex; justify-content: center; align-items: center;
+}
 
-    // Feedback visual e bloqueio imediato do botão
-    btnSend.innerText = "Processando...";
-    btnSend.disabled = true;
+.login-box {
+    background: var(--white);
+    padding: 40px;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 20px 25px rgba(0,0,0,0.1);
+}
 
-    const newOrder = {
-        clientUid: user.uid,
-        clientName: clientName,
-        status: 'pendente',
-        tipoAplicacao: type,
-        items: pendingOSItems,
-        offlineCreated: false
-    };
+.brand-logo { font-size: 3rem; color: var(--accent); display: block; margin-bottom: 10px; }
 
-    // 2. SE ESTIVER TOTALMENTE OFFLINE, SALVA NO CELULAR
-    if (!navigator.onLine) {
-        newOrder.createdAt = new Date();
-        newOrder.offlineCreated = true;
-        saveOfflineOrder(newOrder);
-        return;
-    }
+/* ================================================================= */
+/* COMPONENTES (BOTÕES E INPUTS)                                     */
+/* ================================================================= */
+.btn {
+    padding: 12px 20px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    color: white;
+    transition: 0.2s;
+}
+.btn:active { transform: translateY(1px); }
 
-    // 3. SE ESTIVER ONLINE, MANDA PARA O FIREBASE (UMA ÚNICA VEZ)
-    if (editingOSId) {
-        // --- MODO EDIÇÃO ---
-        newOrder.updatedAt = firebase.firestore.FieldValue.serverTimestamp();
-        db.collection('service_orders').doc(editingOSId).update(newOrder)
-            .then(() => {
-                alert("Solicitação atualizada com sucesso!");
-                resetOSForm();
-                if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
-                    openClientHistory();
-                }
-            })
-            .catch((error) => {
-                console.error("Erro na edição:", error);
-                alert("Erro ao atualizar a solicitação. Tente novamente.");
-                resetOSForm();
-            });
-    } else {
-        // --- MODO CRIAÇÃO ---
-        newOrder.createdAt = firebase.firestore.FieldValue.serverTimestamp();
-        db.collection('service_orders').add(newOrder)
-            .then(() => {
-                alert("Solicitação enviada com sucesso!");
-                resetOSForm();
-                if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
-                    openClientHistory();
-                }
-            })
-            .catch((error) => {
-                // Se der erro de rede durante o envio, aciona seu backup local
-                console.warn("Envio online falhou. Salvando no modo offline...", error);
-                newOrder.createdAt = new Date();
-                newOrder.offlineCreated = true;
-                saveOfflineOrder(newOrder);
-            });
+.btn-primary { background-color: var(--primary); }
+.btn-accent { background-color: var(--accent); }
+.btn-success { background-color: var(--success); }
+.btn-danger { background-color: var(--danger); padding: 6px 12px; font-size: 0.8em; }
+
+input, select {
+    width: 100%;
+    padding: 12px 16px; 
+    margin-bottom: 20px;
+    border: 1px solid #cbd5e1; 
+    border-radius: 8px;
+    background: #f8fafc; 
+    color: var(--text-main);
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+input:focus, select:focus {
+    background: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); 
+    outline: none;
+}
+
+/* ================================================================= */
+/* LAYOUT PRINCIPAL (ADMIN E CLIENTE)                             */
+/* ================================================================= */
+#main-wrapper { display: flex; height: 100%; width: 100%; position: relative; }
+
+.admin-sidebar {
+    width: 280px;
+    background: var(--primary);
+    color: white;
+    display: flex; flex-direction: column;
+    padding: 20px;
+    height: 100%;
+    flex-shrink: 0; 
+}
+
+.admin-menu-item {
+    padding: 12px;
+    cursor: pointer;
+    color: #94a3b8; 
+    border-radius: 8px;
+    margin-bottom: 5px;
+    display: flex; align-items: center; gap: 10px;
+}
+.admin-menu-item:hover, .admin-menu-item.active { background: var(--accent); color: white; }
+
+/* ================================================================= */
+/* MELHORIAS VISUAIS DO ADMIN                                     */
+/* ================================================================= */
+
+.admin-content {
+    flex: 1;          
+    width: 100%;      
+    min-width: 0;     
+    height: 100%;     
+    overflow-y: auto; 
+    background-color: #f8fafc; 
+    padding: 40px; 
+}
+
+.section-header h2 {
+    font-size: 1.5rem;
+    color: var(--primary);
+    margin-bottom: 20px;
+    font-weight: 700;
+    border-left: 5px solid var(--accent); 
+    padding-left: 15px;
+}
+
+.form-card {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 12px; 
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+                0 2px 4px -1px rgba(0, 0, 0, 0.03); 
+    border: 1px solid var(--border);
+    margin-bottom: 30px;
+    transition: transform 0.2s;
+}
+
+.form-card:hover {
+    transform: translateY(-2px); 
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+}
+
+.form-card h3 {
+    margin-top: 0;
+    color: var(--text-main);
+    font-size: 1.1rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 15px;
+    margin-bottom: 20px;
+}
+
+/* --- INTERFACE CLIENTE --- */
+#client-interface { display: flex; width: 100%; height: 100%; position: relative; }
+
+#client-sidebar {
+    width: 380px;
+    height: 100%;
+    background: var(--white);
+    display: flex; flex-direction: column;
+    z-index: 1500;
+    box-shadow: 4px 0 15px rgba(0,0,0,0.05);
+    flex-shrink: 0;
+}
+
+#client-header {
+    padding: 20px;
+    background: var(--primary);
+    color: white;
+    display: flex; justify-content: space-between; align-items: center;
+    flex-shrink: 0;
+}
+
+#farms-list {
+    width: 100%;
+    height: auto;       
+    padding: 15px;
+    padding-bottom: 170px; 
+    background: transparent; 
+    overflow: visible;  
+    display: block;     
+}
+
+body.dark-mode #farms-list {
+    background-color: transparent;
+}
+
+#download-area {
+    padding: 20px;
+    background: var(--white);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+#map, #admin-map { flex: 1; height: 100%; width: 100%; z-index: 1; background: #e5e5e5; }
+
+.farm-group { border: 1px solid var(--border); border-radius: 8px; margin-bottom: 10px; overflow: hidden; background: var(--white); }
+.farm-title { padding: 10px; background: #f1f5f9; font-weight: bold; font-size: 0.9rem; border-bottom: 1px solid var(--border); }
+.plot-item { padding: 8px 10px; display: flex; align-items: center; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+.plot-item:hover { background: #f8fafc; }
+.plot-item.active { background: #eff6ff; border-left: 3px solid var(--accent); }
+.plot-item input { width: 18px; height: 18px; margin: 0 10px 0 0; }
+
+.logout-btn-small { background: rgba(255,255,255,0.1); border: none; color: white; padding: 6px; border-radius: 4px; cursor: pointer; }
+
+#tab-mapas-admin.hidden { display: none !important; }
+#tab-mapas-admin:not(.hidden) { display: flex !important; flex-direction: column; height: 100%; }
+
+.modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; display: flex; justify-content: center; align-items: center; }
+.modal-box { background: var(--white); width: 90%; max-width: 500px; max-height: 80vh; border-radius: 12px; display: flex; flex-direction: column; }
+.modal-header { padding: 15px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; }
+#modal-content { padding: 20px; overflow-y: auto; }
+.admin-farm-item { display: flex; justify-content: space-between; padding: 10px; border: 1px solid var(--border); margin-bottom: 5px; border-radius: 6px; }
+
+#mobile-menu-btn { display: none; position: absolute; top: 15px; left: 15px; z-index: 2000; padding: 10px; background: white; border: none; border-radius: 8px; box-shadow: var(--shadow); }
+
+@media screen and (max-width: 768px) {
+    .admin-sidebar { width: 60px; padding: 10px; }
+    .admin-sidebar span, .admin-brand span { display: none; }
+    #mobile-menu-btn { display: block; }
+    
+    #client-sidebar { position: fixed; left: 0; top: 0; height: 100%; width: 85%; max-width: 320px; transform: translateX(-100%); transition: 0.3s; }
+    #client-sidebar.open { transform: translateX(0); }
+    #sidebar-overlay-mobile { display: none; position: fixed; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1400; }
+    #sidebar-overlay-mobile.show { display: block; }
+}
+
+/* ================================================================= */
+/* EDITOR DE OS (AQUI FICA A VISUALIZAÇÃO DE MAPA E PDF)          */
+/* ================================================================= */
+#os-editor-overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: #e5e5e5;
+    z-index: 5000;
+    display: flex; 
+    flex-direction: row; 
+}
+
+#config-panel {
+    position: relative; 
+    background: #ffffff;
+    color: #333;
+    padding: 15px;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.1); 
+    z-index: 6000;
+    height: 100%; 
+    overflow-y: auto;
+    width: 260px; 
+    border-right: 1px solid #ccc;
+    border-radius: 0; 
+    flex-shrink: 0; 
+}
+
+@media screen and (max-width: 768px) {
+    #os-editor-overlay { flex-direction: column; }
+    #config-panel {
+        position: absolute; 
+        height: auto;
+        width: 90%;
+        max-height: 60vh;
+        border-radius: 8px;
     }
 }
 
-// Função auxiliar para limpar o formulário
-function resetOSForm() {
-    document.querySelectorAll('.chk-export:checked').forEach(c => { 
-        c.checked = false; 
-        c.dispatchEvent(new Event('change')); 
-    });
-    closeOSModal();
-	editingOSId = null;
-    const btn = document.querySelector('#new-os-modal .btn-success');
-    if(btn) { btn.innerText = "Enviar Pedido"; btn.disabled = false; }
-    document.querySelector('#new-os-modal h3').innerHTML = '<i class="fa-solid fa-paper-plane"></i> Confirmar Solicitação';
+.config-group { margin-bottom: 10px; font-size: 0.9em; }
+.config-group label { display: block; font-weight: bold; margin-bottom: 4px; color: #444; }
+#config-panel input, #config-panel select { margin: 0; padding: 6px; font-size: 1em; width: 100%; background: #f9f9f9; border: 1px solid #bbb; color: #000; border-radius: 4px; }
+.separator { height: 1px; background: #ddd; margin: 12px 0; }
+
+#os-map-area { flex: 1; position: relative; width: 100%; height: 100%; }
+#os-map { width: 100%; height: 100%; background: #e5e5e5; }
+
+#os-map-title {
+    position: absolute; 
+    top: 30px; 
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto; 
+    z-index: 2000; 
+    font-size: 60px; 
+    font-weight: 900;
+    text-transform: uppercase; 
+    pointer-events: none;
+    text-shadow: -2px -2px 0 #fff, 2px -2px 0 #fff, -2px 2px 0 #fff, 2px 2px 0 #fff;
+    color: #000; 
+    white-space: nowrap; 
+    text-align: center;
 }
 
-function toggleMobileSidebar() { 
-    document.getElementById('client-sidebar').classList.toggle('open'); 
-    document.getElementById('sidebar-overlay-mobile').classList.toggle('show'); 
+.leaflet-div-icon.os-label {
+    background: transparent !important;
+    border: none !important;
 }
 
-// ============================================
-// ADMIN
-// ============================================
-function showAdminTab(id) {
-    document.querySelectorAll('.admin-content > div').forEach(d => d.classList.add('hidden'));
-    document.getElementById(id).classList.remove('hidden');
-    document.querySelectorAll('.admin-menu-item').forEach(i => i.classList.remove('active'));
-    event.currentTarget.classList.add('active'); 
-    if(id === 'tab-mapas-admin') setTimeout(() => { if(!adminMap) initAdminMap(); adminMap.invalidateSize(); }, 100);
+.os-label div {
+    transform: translate(-50%, -50%) !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: max-content; 
 }
 
-function loadClientsForAdmin() {
-    const tbody = document.querySelector('#clients-table tbody'); const select = document.getElementById('farm-client-select');
-    tbody.innerHTML = ""; select.innerHTML = '<option value="">Selecione...</option>';
-    db.collection('users').where('role', '==', 'client').get().then(snap => {
-        snap.forEach(doc => {
-            const d = doc.data();
-            tbody.innerHTML += `<tr><td>${d.nome}</td><td>${d.email}</td><td style="text-align:center"><button class="btn btn-primary" onclick="viewClientFarms('${doc.id}','${d.nome}')"><i class="fa-solid fa-eye"></i></button> <button class="btn btn-danger" onclick="deleteUser('${doc.id}')"><i class="fa-solid fa-trash"></i></button></td></tr>`;
-            let opt = document.createElement('option'); opt.value = doc.id; opt.innerText = d.nome; select.appendChild(opt);
-        });
-    });
+#os-map-logo {
+    position: absolute; bottom: 40px; right: 40px;
+    z-index: 1000; max-width: 300px; max-height: 150px;
+    pointer-events: none;
+    filter: drop-shadow(0 0 10px rgba(255,255,255,0.8));
 }
 
-async function createClientAccount() {
-    const nome = document.getElementById('new-client-name').value;
-    const email = document.getElementById('new-client-email').value;
-    const pass = document.getElementById('new-client-pass').value;
-    if(!nome || !email || !pass) return alert("Preencha tudo.");
-    try {
-        const cred = await secondaryAuth.createUserWithEmailAndPassword(email, pass);
-        await db.collection('users').doc(cred.user.uid).set({nome: nome, email: email, role: 'client', criadoEm: new Date()});
-        secondaryAuth.signOut(); alert("Criado!"); loadClientsForAdmin(); loadClientsForMapFilter();
-        document.getElementById('new-client-name').value=''; document.getElementById('new-client-email').value=''; document.getElementById('new-client-pass').value='';
-    } catch(e) { alert("Erro: "+e.message); }
+#os-north-arrow {
+    position: absolute; top: 40px; left: 40px;
+    width: 150px; height: 150px;
+    z-index: 1000; pointer-events: none;
+    filter: drop-shadow(0 0 5px white);
 }
 
-function deleteUser(uid) { if(confirm("Excluir cliente?")) db.collection('users').doc(uid).delete().then(() => { loadClientsForAdmin(); loadClientsForMapFilter(); }); }
+#os-map-legend {
+    position: absolute; bottom: 40px; left: 40px;
+    z-index: 999; pointer-events: none;
+}
+#os-map-legend h4 { margin: 0 0 5px 0; font-size: 14px; text-shadow: 1px 1px 0 #fff; color: #000; text-transform: uppercase; }
 
-async function uploadFarm() {
-    const nome = document.getElementById('farm-name').value;
-    const numero = document.getElementById('farm-number').value;
-    const uid = document.getElementById('farm-client-select').value;
-    const file = document.getElementById('kml-file').files[0];
-    
-    if(!nome || !numero || !uid || !file) {
-        showToast("Por favor, preencha todos os campos.", "error");
-        return;
-    }
-    
-    const text = await file.text();
-    const geojson = toGeoJSON.kml(new DOMParser().parseFromString(text, 'text/xml'));
-    const talhoes = [];
-    
-    geojson.features.forEach((f, i) => {
-        if(f.geometry && f.geometry.type.includes('Polygon')) {
-            // --- 1. DETETIVE DE NOMES (Procura a coluna certa) ---
-            let foundName = null;
-            
-            // Se o KML foi convertido e tem propriedades
-            if (f.properties) {
-                // Lista de prioridade: plot_name > talhao > name > label
-                const priorityKeys = ['plot_name', 'talhao', 'plot', 'name', 'Name', 'label', 'description'];
-                const keys = Object.keys(f.properties);
+.legend-item { display: flex; align-items: center; margin-bottom: 2px; font-size: 12px; font-weight: bold; text-shadow: 1px 1px 0 #fff; color: #000; }
+.legend-color-box { width: 15px; height: 15px; margin-right: 5px; border: 1px solid #fff; }
 
-                for (const keyToFind of priorityKeys) {
-                    // Procura a chave ignorando maiúsculas/minúsculas (ex: Plot_Name ou plot_name)
-                    const realKey = keys.find(k => k.toLowerCase() === keyToFind.toLowerCase());
-                    if (realKey && f.properties[realKey]) {
-                        foundName = f.properties[realKey];
-                        break; // Achou! Para de procurar.
-                    }
-                }
-            }
-            
-            // Se não achou nada, usa um genérico
-            let raw = foundName || `Talhão ${i+1}`;
-            
-            // --- 2. CORREÇÃO DO NÚMERO (Evita pegar o número da fazenda) ---
-            let tNum = i + 1; // Padrão: Sequencial (1, 2, 3...)
-            
-            if(raw) {
-                const rawStr = raw.toString();
-                
-                // Estratégia A: Procura explícito por "T01", "Talhão 10"
-                const matchExplicit = rawStr.match(/(?:T|Talhao|Talhão)[\s_-]*(\d+)/i);
-                
-                if (matchExplicit) {
-                    tNum = parseInt(matchExplicit[1]);
-                } else {
-                    // Estratégia B: Se não tem "T", pega todos os números da string
-                    const numbers = rawStr.match(/(\d+)/g);
-                    
-                    if (numbers) {
-                        // O TRUQUE: Pega o ÚLTIMO número encontrado.
-                        // Ex: "Fazenda 55 Talhão 02" -> O array é ["55", "02"]. Pegamos o "02".
-                        tNum = parseInt(numbers[numbers.length - 1]);
-                    }
-                }
-            }
-            
-            talhoes.push({ 
-                numero: tNum, 
-                nomeOriginal: raw, 
-                geometry: JSON.stringify(f.geometry) 
-            });
-        }
-    });
-    
-    if(talhoes.length === 0) {
-        showToast("O arquivo KML não contém polígonos válidos.", "error");
-        return;
-    }
-
-    db.collection('fazendas').add({ 
-        nome: nome, 
-        numero: parseInt(numero), 
-        donoUID: uid, 
-        talhoes: talhoes, 
-        criadoEm: new Date() 
-    }).then(() => {
-        showToast("Fazenda cadastrada com sucesso!", "success");
-        
-        // Limpa os campos
-        document.getElementById('farm-name').value = '';
-        document.getElementById('farm-number').value = '';
-        document.getElementById('kml-file').value = '';
-        document.getElementById('file-name-display').innerText = '';
-        
-        // Atualiza a lista no mapa
-        const currentFilter = document.getElementById('map-admin-client-select').value;
-        if(currentFilter === uid) {
-            loadAdminFarmsList(uid);
-        }
-    }).catch(e => {
-        showToast("Erro ao salvar: " + e.message, "error");
-    });
+.legend-total { 
+    margin-top: 8px; padding-top: 5px; border-top: 2px solid #000; 
+    font-weight: 900; text-transform: uppercase; font-size: 14px; 
+    color: #000; text-shadow: 1px 1px 0 #fff; 
 }
 
-function updateFileName(input) {
-    if (input.files && input.files[0]) {
-        const fileName = input.files[0].name;
+#os-scale-container {
+    position: absolute; bottom: 30px; left: 50%;
+    transform: translateX(-50%); z-index: 1000; pointer-events: none;
+}
+.leaflet-control-scale-line { border: 2px solid #333; font-weight: bold; background: rgba(255,255,255,0.8); color: #000; }
 
-        // 1. Mostra o nome do arquivo na tela (feedback visual)
-        document.getElementById('file-name-display').innerText = fileName;
-
-        // --- LÓGICA DE PREENCHIMENTO AUTOMÁTICO ---
-
-        // A. Tenta achar o NÚMERO
-        // Procura pelo primeiro grupo de números no nome do arquivo
-        const numMatch = fileName.match(/(\d+)/);
-        if (numMatch) {
-            // Se achou, converte para número inteiro (tira zeros à esquerda, ex: 05 vira 5)
-            document.getElementById('farm-number').value = parseInt(numMatch[0]);
-        }
-
-        // B. Tenta limpar o NOME
-        // 1. Remove a extensão ".kml" (maiúscula ou minúscula)
-        let cleanName = fileName.replace(/\.kml$/i, '');
-
-        // 2. Remove o número e prefixos comuns do início (ex: "F05 - ", "05 ", "Fazenda 10 -")
-        // Explicação da RegEx: Começo da linha (^), opcionalmente 'F' ou 'Fazenda', seguido de números, seguido de traço ou espaço
-        cleanName = cleanName.replace(/^(F|Fazenda)?\s*\d+\s*[-_]?\s*/i, '');
-
-        // 3. Preenche o campo
-        document.getElementById('farm-name').value = cleanName.trim();
-    }
+body.preview-active #os-editor-overlay {
+    background: #333; 
+    display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start;
 }
 
-function initAdminMap() { 
-    if(adminMap) return; 
-    
-    adminMap = L.map('admin-map', {
-        zoomControl: true,
-        preferCanvas: true // <--- ISSO É O SEGREDO! Usa a GPU do celular.
-    }).setView([-14,-52],4); 
-    
-    L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',{
-        maxZoom:20,
-        subdomains:['mt0','mt1','mt2','mt3']
-    }).addTo(adminMap); 
-
-    // Lógica de Zoom Inteligente
-    adminMap.on('zoomend', function() {
-        const zoom = adminMap.getZoom();
-        const mapDiv = document.getElementById('admin-map');
-        if (zoom < 13) {
-            mapDiv.classList.add('hide-labels');
-        } else {
-            mapDiv.classList.remove('hide-labels');
-        }
-    });
+body.preview-active #config-panel {
+    position: relative; left: 0; top: 0;
+    width: 320px; height: 100vh; overflow-y: auto;
+    border-radius: 0; box-shadow: 2px 0 10px rgba(0,0,0,0.5);
+    background: #fff; flex-shrink: 0;
 }
 
-function loadClientsForMapFilter() {
-    const s = document.getElementById('map-admin-client-select'); if(!s) return; s.innerHTML='<option value="">Selecione...</option>';
-    db.collection('users').where('role','==','client').get().then(snap => snap.forEach(d => { let o=document.createElement('option'); o.value=d.id; o.innerText=d.data().nome; s.appendChild(o); }));
+body.preview-active #os-map-area {
+    width: 4500px !important; height: 3182px !important;
+    position: absolute; border: 50px solid white; background: white;
+    top: 50%; left: calc(50% + 160px);
+    transform: translate(-50%, -50%) scale(0.2);
+    box-shadow: 0 0 100px rgba(0,0,0,0.5);
 }
 
-function loadAdminFarmsList(uid) {
-    const s = document.getElementById('map-admin-farm-select'); 
-    s.innerHTML = '<option>Carregando...</option>'; 
-    s.disabled = true;
-    
-    // Limpa o mapa se mudar de cliente
-    if(adminMap) adminMap.eachLayer(l=>{if(!l._url) adminMap.removeLayer(l)});
-    
-    if(!uid) { 
-        s.innerHTML = '<option>Aguardando...</option>'; 
-        return; 
-    }
-    
-    db.collection('fazendas').where('donoUID','==',uid).get().then(snap => {
-        s.innerHTML = '<option value="">Selecione a Fazenda...</option>'; 
-        s.disabled = false;
-        
-        // 1. Converte os dados para uma lista (Array) para podermos ordenar
-        let farms = [];
-        snap.forEach(doc => {
-            farms.push({ id: doc.id, ...doc.data() });
-        });
+body.preview-active #os-map-title { font-size: 100px; top: 50px; }
+body.preview-active #os-north-arrow { width: 350px; height: 350px; top: 80px; left: 80px; }
+body.preview-active #os-map-legend { bottom: 80px; left: 80px; transform: scale(2.5); transform-origin: bottom left; }
+body.preview-active #os-map-logo { bottom: 80px; right: 80px; max-width: 500px; }
+body.preview-active #os-scale-container { bottom: 80px; transform: translateX(-50%) scale(3.5); transform-origin: bottom center; }
 
-        // 2. Ordena a lista pelo NÚMERO da fazenda (Crescente: 1, 2, 3...)
-        farms.sort((a, b) => a.numero - b.numero);
 
-        // 3. Cria as opções na tela
-        farms.forEach(f => { 
-            let o = document.createElement('option'); 
-            o.value = f.id;
-            
-            // 4. Formatação: Adiciona o ZERO à esquerda (Ex: 1 vira 01, 10 continua 10)
-            const fNum = String(f.numero).padStart(2, '0');
-            
-            o.innerText = `F${fNum} - ${f.nome}`; 
-            s.appendChild(o); 
-        });
-    });
+#os-scale-container .leaflet-control-scale {
+    margin: 0 !important;
 }
 
-function loadAdminMap(fid) {
-    const colorControl = document.getElementById('farm-color-control');
-    
-    // 1. Controle de exibição (Segurança extra)
-    if(!fid) {
-        if(colorControl) colorControl.style.display = 'none';
-        return;
-    }
-    
-    // FORÇA O CONTROLE A APARECER
-    if(colorControl) {
-        colorControl.classList.remove('hidden'); // Remove a classe se ela existir
-        colorControl.style.display = 'flex';     // Força o display flex
-    }
-
-    const farmColors = [
-        '#e74c3c', '#8e44ad', '#3498db', '#1abc9c', '#f1c40f', 
-        '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b',
-        '#9b59b6', '#16a085', '#f39c12', '#27ae60', '#7f8c8d', 
-        '#2c3e50', '#e84393', '#00cec9', '#6c5ce7', '#fdcb6e', 
-        '#d63031', '#0984e3', '#00b894', '#ffeaa7', '#ff7675'
-    ];
-
-    db.collection('fazendas').doc(fid).get().then(doc => {
-        if (!doc.exists) return;
-
-        const f = doc.data(); 
-        const b = L.latLngBounds();
-        
-        if(adminMap) adminMap.eachLayer(l => { if(!l._url) adminMap.removeLayer(l) });
-        
-        // Lógica da Cor
-        const colorIndex = f.numero ? f.numero : 0;
-        const autoColor = farmColors[colorIndex % farmColors.length];
-        const finalColor = f.cor ? f.cor : autoColor; 
-
-        // Atualiza a bolinha
-        const picker = document.getElementById('farm-color-picker');
-        if(picker) picker.value = finalColor;
-        
-        if(typeof updateColorPreview === 'function') updateColorPreview(finalColor);
-
-        f.talhoes.forEach(t => { 
-            try {
-                const geoData = JSON.parse(t.geometry);
-                const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
-                const areaM2 = turf.area(geoData);
-                const areaHa = (areaM2 / 10000).toFixed(2);
-
-                const p = L.geoJSON(geoData, {
-                    style: { color: '#000000', weight: 1, fillColor: finalColor, fillOpacity: 0.8 }
-                }).addTo(adminMap);
-                
-                const center = turf.centerOfMass(geoData);
-                const labelHtml = `<div><span style="font-size:12px">${displayName}</span><br><span style="font-size:10px">${areaHa} ha</span></div>`;
-                const labelIcon = L.divIcon({ className: 'admin-map-label', html: labelHtml, iconSize: [0,0] });
-                L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon: labelIcon}).addTo(adminMap);
-                
-                p.bindTooltip(`<strong>${displayName}</strong> (${areaHa} ha)`, { direction: 'top' }); 
-                b.extend(p.getBounds());
-            } catch(e){} 
-        });
-        
-        if(f.talhoes.length) adminMap.fitBounds(b);
-    });
+#os-scale-container .leaflet-control-scale-line {
+    background: rgba(255, 255, 255, 0.8); 
+    border: 2px solid #333;
+    text-align: center;
+    font-weight: bold;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 
-function loadAllFarmsOnMap() {
-    if(!adminMap) initAdminMap(); 
-    
-    // Esconde o controle de cor pois estamos vendo todas
-    const colorControl = document.getElementById('farm-color-control');
-    if(colorControl) colorControl.style.display = 'none';
-
-    adminMap.eachLayer(l => { if(!l._url) adminMap.removeLayer(l) });
-    document.getElementById('map-admin-client-select').value = ""; 
-    document.getElementById('map-admin-farm-select').disabled = true;
-
-    const farmColors = [
-        '#e74c3c', '#8e44ad', '#3498db', '#1abc9c', '#f1c40f', 
-        '#e67e22', '#2ecc71', '#d35400', '#2980b9', '#c0392b'
-    ];
-
-    db.collection('fazendas').get().then(snap => {
-        const b = L.latLngBounds(); 
-        let c = 0;
-
-        snap.forEach(doc => {
-            const f = doc.data();
-            
-            // --- MESMA LÓGICA DE COR AQUI ---
-            const colorIndex = f.numero ? f.numero : 0;
-            const autoColor = farmColors[colorIndex % farmColors.length];
-            const finalColor = f.cor ? f.cor : autoColor; // Prioriza a cor salva
-            
-            f.talhoes.forEach(t => { 
-                try {
-                    const geoData = JSON.parse(t.geometry);
-                    const displayName = t.nomeOriginal || `Talhão ${t.numero}`;
-                    const areaM2 = turf.area(geoData);
-                    const areaHa = (areaM2 / 10000).toFixed(2);
-
-                    const p = L.geoJSON(geoData, {
-                        style: { color: '#000000', weight: 1, fillColor: finalColor, fillOpacity: 0.7 } 
-                    }).addTo(adminMap);
-                    
-                    const center = turf.centerOfMass(geoData);
-                    const labelHtml = `
-                        <div>
-                            <span style="font-size:11px">${displayName}</span><br>
-                            <span style="font-size:9px">${areaHa} ha</span>
-                        </div>
-                    `;
-                    
-                    const labelIcon = L.divIcon({ className: 'admin-map-label', html: labelHtml, iconSize:[0,0] });
-                    L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon:labelIcon}).addTo(adminMap);
-                    
-                    b.extend(p.getBounds()); 
-                    c++;
-                } catch(e){} 
-            });
-        });
-
-        if(c > 0) adminMap.fitBounds(b);
-    });
+.table-container {
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border: 1px solid var(--border);
+    overflow: hidden; 
 }
 
-function viewClientFarms(uid, name) {
-    document.getElementById('admin-modal').classList.remove('hidden'); document.getElementById('modal-client-name').innerText = `Fazendas de ${name}`;
-    const c = document.getElementById('modal-content'); c.innerHTML='Carregando...';
-    db.collection('fazendas').where('donoUID','==',uid).get().then(snap => {
-        c.innerHTML = snap.empty ? 'Nenhuma fazenda.' : '';
-        snap.forEach(doc => { const f = doc.data(); c.innerHTML += `<div class="admin-farm-item"><div><strong>F${f.numero} - ${f.nome}</strong><small>${f.talhoes.length} talhões</small></div><button class="btn btn-danger" onclick="deleteFarm('${doc.id}','${uid}','${name}')"><i class="fa-solid fa-trash"></i></button></div>`; });
-    });
-}
-function deleteFarm(fid, uid, name) { if(confirm("Apagar fazenda?")) db.collection('fazendas').doc(fid).delete().then(() => viewClientFarms(uid, name)); }
-function closeModal() { document.getElementById('admin-modal').classList.add('hidden'); }
-
-// ============================================
-// EDITOR DE OS
-// ============================================
-    function loadServiceOrders() {
-    const tbody = document.querySelector('#os-table tbody');
-    
-    db.collection('service_orders').orderBy('createdAt','desc').onSnapshot(snap => {
-        tbody.innerHTML = ""; 
-        let p=0;
-        
-        snap.forEach(doc => {
-            const os = doc.data();
-            if(os.status === 'pendente') p++;
-            
-            let sClass = 'color:#e67e22'; 
-            if(os.status === 'em analise') sClass = 'color:#2980b9'; 
-            if(os.status === 'concluido') sClass = 'color:#27ae60'; 
-            if(os.status === 'cancelado') sClass = 'color:#c0392b'; 
-
-            const tipoApp = os.tipoAplicacao ? os.tipoAplicacao : '-';
-
-            let buttonsHtml = `<button class="btn btn-primary" style="margin-right:5px; padding:6px 10px;" onclick="openOSEditor('${doc.id}')" title="Abrir Editor"><i class="fa-solid fa-map"></i></button>`;
-            
-            if(os.status !== 'concluido' && os.status !== 'cancelado') {
-                buttonsHtml += `<button class="btn btn-success" style="padding:6px 10px;" onclick="finishOS('${doc.id}')" title="Marcar como Concluída"><i class="fa-solid fa-check"></i></button>`;
-            }
-            
-            buttonsHtml += `
-            <button onclick="excluirOS('${doc.id}')" style="background:#ef4444; color:white; border:none; padding:4px 8px; border-radius:4px; cursor:pointer; margin-left:5px;" title="Excluir OS">
-                  <i class="fa-solid fa-trash"></i>
-            </button>
-            `;
-
-            const checkCol = document.querySelector('.merge-checkbox-col');
-            const isHidden = !checkCol || checkCol.classList.contains('hidden');
-            const mergeColClass = isHidden ? 'hidden merge-cell' : 'merge-cell';
-
-            // CORREÇÃO: Tratamento seguro da data para evitar o erro null
-            let dataFormatada = 'Processando...';
-            if (os.createdAt && os.createdAt.seconds) {
-                dataFormatada = new Date(os.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
-            } else if (os.createdAt && os.createdAt.getTime) {
-                dataFormatada = os.createdAt.toLocaleDateString('pt-BR');
-            }
-
-            tbody.innerHTML += `
-                <tr>
-                    <td class="${mergeColClass}" style="text-align: center;">
-                        <input type="checkbox" class="chk-merge-os" value="${doc.id}" data-clientuid="${os.clientUid}" data-clientname="${os.clientName}" data-type="${tipoApp}">
-                    </td>
-                    <td>${dataFormatada}</td>
-                    <td>${os.clientName}</td>
-                    <td>${os.items.length} itens</td>
-                    <td><strong>${tipoApp}</strong></td>
-                    <td style="font-weight:bold;${sClass}">${os.status.toUpperCase()}</td>
-                    <td>${buttonsHtml}</td>
-                </tr>`;
-        });
-        
-        const badge = document.getElementById('badge-os'); 
-        if(p>0) { badge.style.display='inline-block'; badge.innerText=p; } 
-        else badge.style.display='none';
-    });
+table {
+    width: 100%;
+    border-collapse: collapse; 
+    font-size: 0.95rem;
 }
 
-// ============================================
-// FUNÇÕES DE UNIR OS
-// ============================================
-
-function toggleMergeMode() {
-    const mergePanel = document.getElementById('merge-action-panel');
-    const headerCheckCol = document.querySelector('.merge-checkbox-col');
-    const rowChecks = document.querySelectorAll('.merge-cell');
-    const selectAllCheck = document.getElementById('select-all-os');
-    
-    mergePanel.classList.toggle('hidden');
-    if(headerCheckCol) headerCheckCol.classList.toggle('hidden');
-    
-    rowChecks.forEach(cell => {
-        cell.classList.toggle('hidden');
-    });
-
-    if (selectAllCheck) selectAllCheck.checked = false;
-    document.querySelectorAll('.chk-merge-os').forEach(c => c.checked = false);
+table thead {
+    background-color: #f1f5f9; 
+    border-bottom: 2px solid var(--border);
 }
 
-function toggleSelectAllOS(masterCheckbox) {
-    document.querySelectorAll('.chk-merge-os').forEach(c => {
-        if (!c.closest('tr').classList.contains('hidden')) {
-            c.checked = masterCheckbox.checked;
-        }
-    });
+table th {
+    text-align: left;
+    padding: 16px;
+    font-weight: 600;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
 }
 
-async function executeMergeOS() {
-    const selected = document.querySelectorAll('.chk-merge-os:checked');
-    if(selected.length < 2) {
-        return alert("Selecione pelo menos duas OS para unir!");
-    }
-
-    let baseClientUid = null;
-    let baseClientName = null;
-    let baseType = null;
-    let valid = true;
-    let idsToMerge = [];
-
-    selected.forEach(chk => {
-        const clientUid = chk.getAttribute('data-clientuid');
-        const clientName = chk.getAttribute('data-clientname');
-        const type = chk.getAttribute('data-type');
-        
-        if (!baseClientUid) {
-            baseClientUid = clientUid;
-            baseClientName = clientName;
-            baseType = type;
-        } else {
-            if (clientUid !== baseClientUid || type !== baseType) {
-                valid = false;
-            }
-        }
-        idsToMerge.push(chk.value);
-    });
-
-    if (!valid) {
-        return alert("Atenção! Você só pode unir OS que sejam do mesmo Cliente e do mesmo Tipo de Aplicação.");
-    }
-
-    if(!confirm(`Deseja realmente unir ${selected.length} OS selecionadas em uma única? As originais serão apagadas.`)) return;
-
-    try {
-        let combinedItems = [];
-        
-        for (let id of idsToMerge) {
-            const doc = await db.collection('service_orders').doc(id).get();
-            if(doc.exists) {
-                const data = doc.data();
-                if(data.items && data.items.length > 0) {
-                    combinedItems = combinedItems.concat(data.items);
-                }
-            }
-        }
-
-        const novaOS = {
-            clientUid: baseClientUid,
-            clientName: baseClientName,
-            status: 'pendente',
-            tipoAplicacao: baseType,
-            items: combinedItems,
-            offlineCreated: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-
-        await db.collection('service_orders').add(novaOS);
-
-        for (let id of idsToMerge) {
-            await db.collection('service_orders').doc(id).delete();
-        }
-
-        if(typeof showToast === 'function') {
-            showToast("Solicitações unidas com sucesso!", "success");
-        } else {
-            alert("Solicitações unidas com sucesso!");
-        }
-        
-        toggleMergeMode();
-
-    } catch (error) {
-        console.error("Erro ao unir:", error);
-        alert("Erro ao unir as OS. Verifique sua conexão com a internet.");
-    }
+table td {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-main);
+    vertical-align: middle;
 }
 
-    async function openOSEditor(osId) {
-    document.getElementById('os-editor-overlay').classList.remove('hidden');
-
-    if (!osMap) {
-        osMap = L.map('os-map', {
-            zoomControl: false,
-            zoomSnap: 0.05,
-            zoomDelta: 0.05,
-            wheelPxPerZoomLevel: 500
-        }).setView([-14, -52], 5);
-        
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
-            maxZoom: 19, attribution: '&copy; OSM contributors' 
-        }).addTo(osMap);
-        
-        osLayers.addTo(osMap);
-        osLabels.addTo(osMap);
-
-        const scale = L.control.scale({ position: 'bottomleft', metric: true, imperial: false, maxWidth: 200 });
-        scale._updateMetric = function (maxMeters) {
-            const meters = this._getRoundNum(maxMeters);
-            const label = meters + ' m';
-            this._updateScale(this._mScale, label, meters / maxMeters);
-        };
-        scale.addTo(osMap);
-        document.getElementById('os-scale-container').appendChild(scale.getContainer());
-    }
-    
-    const doc = await db.collection('service_orders').doc(osId).get();
-    if(!doc.exists) return;
-    const osData = doc.data();
-    if(osData.status === 'pendente') db.collection('service_orders').doc(osId).update({status: 'em analise'});
-
-    osLayers.clearLayers(); osLabels.clearLayers();
-    document.getElementById('os-legend-content').innerHTML = "";
-    
-    // Configura Título e Logo
-    const nomeCliente = osData.clientName ? osData.clientName.toUpperCase() : "CLIENTE";
-    const tipoAplicacao = osData.tipoAplicacao ? osData.tipoAplicacao.toUpperCase() : "SERVIÇO";
-    const tituloPadrao = `${nomeCliente} - MAPA ESTRATÉGICO - ${tipoAplicacao}`;
-    document.getElementById('cfg-title-text').value = tituloPadrao;
-    updateOSTitle();
-    
-    const urlSuaLogo = "imagem/logo.png"; 
-    const imgLogo = document.getElementById('os-map-logo');
-    if(imgLogo) {
-        imgLogo.src = urlSuaLogo;
-        imgLogo.onerror = function() { this.style.display = 'none'; };
-        imgLogo.onload = function() { this.style.display = 'block'; };
-        document.getElementById('cfg-logo-file').value = ""; 
-    }
-
-    loadedOSFeatures = []; 
-    const bounds = L.latLngBounds(); let totalHectares = 0;
-    const farmGroups = {};
-    
-    osData.items.forEach(i => { 
-        if(!farmGroups[i.farmId]) farmGroups[i.farmId] = [];
-        farmGroups[i.farmId].push(i.realName); 
-    });
-
-    // 1. Paleta gigante (peguei emprestado do seu outro sistema)
-    let colorPool = [
-        '#e74c3c', '#8e44ad', '#3498db', '#16a085', '#f1c40f', '#e67e22', '#e84118', 
-        '#8c7ae6', '#00a8ff', '#0097e6', '#44bd32', '#c23616', '#2f3542', '#2ed573', 
-        '#ff4757', '#5352ed', '#1e90ff', '#3742fa', '#2f3640', '#57606f', '#7bed9f', 
-        '#70a1ff', '#ff6b81', '#a4b0be', '#f6e58d', '#ffbe76', '#ff7979', '#badc58', 
-        '#f9ca24', '#f0932b', '#eb4d4b', '#6ab04c', '#7ed6df', '#e056fd', '#686de0', 
-        '#30336b', '#95afc0', '#22a6b3', '#be2edd', '#4834d4', '#130f40', '#6c5ce7', 
-        '#a29bfe', '#00b894', '#0984e3', '#fdcb6e', '#d63031', '#e17055', '#fd79a8'
-    ];
-    
-    // Array para guardar as cores que já usamos neste projeto
-    let usedColors = [];
-
-    for (const [farmId, targetNames] of Object.entries(farmGroups)) {
-        const farmDoc = await db.collection('fazendas').doc(farmId).get();
-        if(farmDoc.exists) {
-            const f = farmDoc.data();
-            
-            // --- NOVA LÓGICA DE COR INTELIGENTE ---
-            let color = "";
-            
-            // A. Se a fazenda já tem uma cor fixa salva no banco, usa ela!
-            if (f.cor) {
-                color = f.cor;
-                usedColors.push(color); // Avisa que essa cor já tá em uso
-            } else {
-                // B. Se não tem cor salva, sorteia uma da lista gigante que NÃO FOI USADA ainda
-                let availableColors = colorPool.filter(c => !usedColors.includes(c));
-                
-                // Se o projeto for absurdamente gigante e acabar as cores (50+ fazendas)
-                if (availableColors.length === 0) {
-                    availableColors = [...colorPool]; // Enche o tanque de cores de novo
-                    usedColors = []; 
-                }
-                
-                // Pega uma cor aleatória das que sobraram
-                const randomIndex = Math.floor(Math.random() * availableColors.length);
-                color = availableColors[randomIndex];
-                
-                // Avisa que essa cor acabou de ser usada
-                usedColors.push(color);
-            }
-            // --------------------------------------
-            let farmHectares = 0;
-
-            // Ordena os talhões para garantir organização visual
-            if(f.talhoes) {
-                f.talhoes.sort((a, b) => {
-                    const getNum = (str) => {
-                        const match = (str || "").toString().match(/(\d+)/g);
-                        return match ? parseInt(match[match.length-1]) : 9999;
-                    };
-                    return getNum(a.nomeOriginal) - getNum(b.nomeOriginal);
-                });
-            }
-
-            f.talhoes.forEach((t, index) => {
-                const dbName = t.nomeOriginal || `Talhão ${t.numero}`;
-                
-                if(targetNames.includes(dbName)) {
-                    try {
-                        const geoData = JSON.parse(t.geometry);
-                        const area = turf.area(geoData) / 10000;
-                        
-                        // --- AQUI ESTÁ A CORREÇÃO ---
-                        // 1. Prioridade total para o nome original do talhão (MUCUIN, F02 T25, etc)
-                        let labelTitle = t.nomeOriginal;
-                        
-                        // 2. Só cria um nome automático se o original estiver vazio
-                        if(!labelTitle || labelTitle.trim() === "") {
-                            const fNum = String(f.numero).padStart(2,'0'); 
-                            const tNum = String(index + 1).padStart(2,'0');
-                            labelTitle = `F${fNum} T${tNum}`;
-                        }
-
-                        // --- SOLUÇÃO DOS NÚMEROS DA FAZENDA ---
-                        // Formata o nome da fazenda de forma inteligente ANTES de salvar
-                        let nomeFormatadoDaFazenda = f.nome;
-                        
-                        // Se a fazenda tem um número válido (maior que zero e não vazio), adiciona o "F0X - "
-                        if (f.numero && f.numero !== "" && f.numero > 0) {
-                            const fNumStr = String(f.numero).padStart(2, '0');
-                            nomeFormatadoDaFazenda = `F${fNumStr} - ${f.nome}`;
-                        }
-                        // ---------------------------------------
-
-                        loadedOSFeatures.push({
-                            type: 'Feature',
-                            properties: {
-                                farmName: nomeFormatadoDaFazenda, // <--- Agora envia o nome já formatado certinho!
-                                farmNumber: f.numero,
-                                plotName: labelTitle, // Usa o nome real
-                                plotNumber: t.numero,
-                                areaHa: area.toFixed(2),
-                                color: color
-                            },
-                            geometry: geoData
-                        });
-
-                        const poly = L.geoJSON(geoData, {
-                            style: { color: 'black', weight: 1, fillColor: color, fillOpacity: 1 }
-                        });
-                        
-                        farmHectares += area;
-                        totalHectares += area;
-
-                        poly.addTo(osLayers);
-                        bounds.extend(poly.getBounds());
-
-                        const center = turf.centerOfMass(geoData);
-                        const labelHtml = `<div style="text-align:center; text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff; line-height:1.2;">
-                            <b style="font-size:12px; white-space:nowrap;">${labelTitle}</b><br>
-                            <span style="font-size:10px; white-space:nowrap;">${area.toFixed(2)} ha</span>
-                        </div>`;
-                        
-                        const labelIcon = L.divIcon({ className: 'os-label', html: labelHtml, iconSize:[0,0] });
-                        L.marker([center.geometry.coordinates[1], center.geometry.coordinates[0]], {icon:labelIcon}).addTo(osLabels);
-
-                    } catch(e){}
-                }
-            });
-
-            document.getElementById('os-legend-content').innerHTML += `<div class="legend-item"><div class="legend-color-box" style="background:${color}"></div><span>F${f.numero} - ${f.nome} (${farmHectares.toFixed(2)} ha)</span></div>`;
-        }
-    }
-
-    document.getElementById('os-legend-content').innerHTML += `
-        <div class="legend-total">
-            TOTAL GERAL: ${totalHectares.toFixed(2)} ha
-        </div>`;
-
-    if(totalHectares > 0) osMap.fitBounds(bounds);
-    updateOSMapStyles();
+table tbody tr:last-child td { border-bottom: none; }
+table tbody tr:hover {
+    background-color: #f8fafc; 
 }
 
-function closeOSEditor() { document.getElementById('os-editor-overlay').classList.add('hidden'); if(isPreviewMode) toggleOSPreviewMode(); }
-function updateOSTitle() { document.getElementById('os-map-title').innerText = document.getElementById('cfg-title-text').value; }
-function updateOSLogo() { const i = document.getElementById('cfg-logo-file'); const img = document.getElementById('os-map-logo'); if(i.files[0]) { const r = new FileReader(); r.onload=e=>img.src=e.target.result; r.readAsDataURL(i.files[0]); } }
-   
-    function updateOSMapStyles() {
-    const sc = document.getElementById('cfg-stroke-color').value; 
-    const sw = document.getElementById('cfg-stroke-width').value;
-    const fs = document.getElementById('cfg-font-size').value; // Valor do input
-    const fc = document.getElementById('cfg-font-color').value;
-    
-    // Configurações de Texto
-    const flh = document.getElementById('cfg-font-line-height').value;
-    const fse = document.getElementById('cfg-font-stroke-enable').checked; 
-    const fsc = document.getElementById('cfg-font-stroke-color').value;
-    const fsw = document.getElementById('cfg-font-stroke-width').value;
-    
-    // Atualiza as linhas dos polígonos
-    osLayers.eachLayer(l => {
-        if(l.setStyle) l.setStyle({color: sc, weight: parseFloat(sw)})
-    });
-    
-    // Atualiza os textos (Labels)
-    document.querySelectorAll('.os-label div').forEach(e => {
-        e.style.color = fc; 
-        
-        if (fse) {
-            e.style.webkitTextStroke = `${fsw}px ${fsc}`;
-            e.style.paintOrder = "stroke fill";
-            e.style.textShadow = 'none'; 
-        } else {
-            e.style.webkitTextStroke = '0px transparent';
-            e.style.textShadow = 'none';
-        }
-        
-        e.style.lineHeight = flh; 
-        
-        // 1. Aplica o tamanho no NOME (Tag <b>)
-        const nameEl = e.querySelector('b');
-        if(nameEl) nameEl.style.fontSize = fs + 'px';
-
-        // 2. Aplica o tamanho na ÁREA (Tag <span>)
-        const areaEl = e.querySelector('span');
-        if(areaEl) {
-            // AGORA SIM: Usa o mesmo valor 'fs' do nome, sem diminuir nada.
-            areaEl.style.fontSize = fs + 'px';
-        }
-    });
-
-    // Configurações da Legenda
-    const ls = document.getElementById('cfg-legend-size').value; 
-    const lbs = document.getElementById('cfg-legend-box-size').value;
-    const lsp = document.getElementById('cfg-legend-spacing').value;
-    const lst = document.getElementById('cfg-legend-stroke').value;
-    
-    document.querySelectorAll('.legend-item').forEach(i => i.style.marginBottom = lsp + 'px');
-    document.querySelectorAll('.legend-item span').forEach(s => {
-        s.style.fontSize = ls + 'px';
-        if(lst > 0) s.style.textShadow = `-0.5px -0.5px 0 #fff, 0.5px -0.5px 0 #fff`; 
-    });
-    document.querySelectorAll('.legend-color-box').forEach(b => {
-        b.style.width = lbs + 'px';
-        b.style.height = lbs + 'px';
-    });
+table td .btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+    margin-right: 5px;
 }
 
-function toggleOSPreviewMode() {
-    isPreviewMode=!isPreviewMode;
-    if(isPreviewMode) { document.body.classList.add('preview-active'); osMap.invalidateSize(); const b=L.latLngBounds([]); osLayers.eachLayer(l=>{if(l.getBounds) b.extend(l.getBounds())}); if(b.isValid()) osMap.fitBounds(b); }
-    else { document.body.classList.remove('preview-active'); osMap.invalidateSize(); }
+/* ================================================================= */
+/* DARK MODE                                                      */
+/* ================================================================= */
+
+body.dark-mode { 
+    --bg-body: #0f172a; 
+    --text-main: #f1f5f9; 
+    --text-light: #94a3b8; 
+    --white: #1e293b;      
+    --border: #334155;     
 }
 
-function printOS() {
-    // 1. Adiciona a etiqueta
-    document.body.classList.add('printing-map');
-
-    // 2. Força o modo preview (tela cheia)
-    if(!isPreviewMode) {
-        toggleOSPreviewMode();
-    }
-    
-    // 3. O SEGREDO: Força o Leaflet a recalcular o tamanho do mapa
-    // Isso evita o bug da tela branca ou cinza
-    if(osMap) osMap.invalidateSize();
-
-    // 4. Delay um pouco maior para garantir que o mapa carregou os tiles
-    setTimeout(() => {
-        window.print();
-
-        // 5. Remove a etiqueta depois de imprimir
-        document.body.classList.remove('printing-map');
-    }, 800); // Aumentei para 800ms para dar tempo do navegador processar
+body.dark-mode #map, 
+body.dark-mode #admin-map { 
+    filter: brightness(0.85); 
 }
 
-function toggleConfigBody() {
-    const body = document.getElementById('config-body');
-    const panel = document.getElementById('config-panel');
-    
-    if (body.style.display === 'none') {
-        body.style.display = 'block';
-        // panel.style.height = 'auto'; // Removido para manter 100% de altura
-        panel.style.width = '260px'; // Largura aberta
-    } else {
-        body.style.display = 'none';
-        // panel.style.height = 'auto'; // Removido para manter 100% de altura
-        panel.style.width = '180px'; // Largura fechada (ajuste conforme seu gosto)
-    }
-
-    // Mágica para o Leaflet recalcular o tamanho do mapa imediatamente
-    setTimeout(() => {
-        if(osMap) osMap.invalidateSize();
-    }, 200);
+body.dark-mode #download-area, 
+body.dark-mode .farm-group { 
+    background-color: #1e293b; 
+    border-color: #334155; 
 }
 
-// Variável Global para armazenar os pedidos carregados
-let loadedClientOrders = []; 
-
-// 1. ATUALIZE ESTA FUNÇÃO (openClientHistory)
-function openClientHistory() {
-    const modal = document.getElementById('client-history-modal');
-    const content = document.getElementById('client-history-content');
-    const user = firebase.auth().currentUser;
-
-    if (!user) return;
-
-    modal.classList.remove('hidden');
-    content.innerHTML = "<div style='text-align:center; padding:30px; color:#777'><i class='fa-solid fa-circle-notch fa-spin'></i> Buscando histórico...</div>";
-
-    db.collection('service_orders').where('clientUid', '==', user.uid).get().then(snap => {
-        if (snap.empty) {
-            content.innerHTML = "<div style='text-align:center; padding:30px;'>Você ainda não fez nenhuma solicitação.</div>";
-            return;
-        }
-
-        loadedClientOrders = []; // Limpa a lista global
-        snap.forEach(doc => {
-            loadedClientOrders.push({ id: doc.id, ...doc.data() });
-        });
-        
-        // --- CORREÇÃO 1: ORDENAÇÃO ROBUSTA ---
-        // Aceita tanto Timestamp do Firebase quanto Date normal
-        loadedClientOrders.sort((a, b) => {
-            const getTime = (d) => {
-                if (!d) return 0;
-                if (d.seconds) return d.seconds * 1000; // É do Firebase
-                if (d.getTime) return d.getTime();      // É Javascript Date (Edição/Offline)
-                return new Date(d).getTime();           // Tenta converter string
-            };
-            return getTime(b.createdAt) - getTime(a.createdAt);
-        });
-
-        let html = "";
-        loadedClientOrders.forEach(os => {
-            
-            // --- CORREÇÃO 2: FORMATAÇÃO DA DATA ---
-            // Evita o erro "undefined reading seconds" na exibição
-            let dateObj;
-            if (os.createdAt && os.createdAt.seconds) {
-                dateObj = new Date(os.createdAt.seconds * 1000);
-            } else {
-                dateObj = new Date(os.createdAt);
-            }
-            // Se a data for inválida, mostra hoje
-            if (isNaN(dateObj.getTime())) dateObj = new Date();
-            
-            const date = dateObj.toLocaleDateString('pt-BR');
-            
-            let statusClass = 'status-pendente'; let statusLabel = os.status;
-            
-            if(os.status === 'em analise') { statusClass = 'status-analise'; statusLabel = 'Em Análise'; }
-            if(os.status === 'concluido') { statusClass = 'status-concluido'; statusLabel = 'Concluído'; }
-            if(os.status === 'cancelado') { statusClass = 'status-cancelado'; statusLabel = 'Cancelado'; }
-
-            // Adicionei onclick="openOrderDetails(...)" na div inteira para ficar clicável
-            html += `
-                <div class="history-item" onclick="openOrderDetails('${os.id}')" style="cursor:pointer;" title="Clique para ver detalhes">
-                    <div class="history-info">
-                        <strong><i class="fa-regular fa-calendar"></i> ${date}</strong>
-                        <small>${os.items.length} mapa(s) - ${os.tipoAplicacao || 'Serviço'}</small>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span class="status-badge ${statusClass}">${statusLabel}</span>
-                        <i class="fa-solid fa-chevron-right" style="color:#cbd5e1;"></i>
-                    </div>
-                </div>
-            `;
-        });
-
-        content.innerHTML = html;
-    }).catch(err => {
-        console.error(err);
-        content.innerHTML = "<div style='text-align:center; padding:20px; color:red'>Erro ao carregar histórico.</div>";
-    });
+body.dark-mode #farms-list { 
+    background-color: #0f172a; 
 }
 
-// 2. ADICIONE ESTAS DUAS NOVAS FUNÇÕES
-
-function openOrderDetails(orderId) {
-    // Encontra o pedido na memória
-    const order = loadedClientOrders.find(o => o.id === orderId);
-    if(!order) return;
-
-    // --- 1. PREPARAÇÃO DOS DADOS (Cálculos) ---
-    let totalArea = 0;
-    const uniqueFarms = new Set();
-    let itemsHtml = "";
-
-    order.items.forEach(item => {
-        const fName = item.farmName || "-";
-        const fNum = item.farmNum ? String(item.farmNum).padStart(2,'0') : "00";
-        const tName = item.realName || "Talhão Sem Nome";
-        
-        if(item.farmName) uniqueFarms.add(item.farmName);
-
-        let areaDisplay = "";
-        if (item.area && item.area !== "undefined" && item.area !== null) {
-            const val = parseFloat(item.area);
-            if(!isNaN(val)) totalArea += val;
-            areaDisplay = `<strong style="margin-left:5px;">(${item.area} ha)</strong>`;
-        }
-
-        itemsHtml += `
-            <tr>
-                <td>${fName}</td>
-                <td>F${fNum}</td>
-                <td>${tName} ${areaDisplay}</td>
-            </tr>
-        `;
-    });
-
-    // --- 2. ATUALIZA A DATA E TABELA (Estes ficam fora da caixa problemática) ---
-    const dateEl = document.getElementById('detail-date');
-    if(dateEl) dateEl.innerText = "Data: " + new Date(order.createdAt.seconds * 1000).toLocaleDateString('pt-BR');
-    
-    const tableEl = document.getElementById('detail-items-list');
-    if(tableEl) tableEl.innerHTML = itemsHtml;
-
-    // --- 3. RECONSTRÓI A CAIXA DE INFORMAÇÕES (Correção do Erro NULL) ---
-    // Aqui nós recriamos o HTML inteiro, GARANTINDO que os IDs existam para a impressão funcionar
-    
-    // Define a cor do status
-    let statusColor = '#333';
-    if(order.status === 'concluido') statusColor = 'green';
-    if(order.status === 'cancelado') statusColor = 'red';
-
-    const infoBox = document.querySelector('.report-info-box');
-    
-    if(infoBox) {
-        infoBox.innerHTML = `
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div>
-                    <p><strong>Cliente:</strong> <span id="detail-client">${order.clientName}</span></p>
-                    <p><strong>Tipo:</strong> <span id="detail-type" class="highlight-type">${order.tipoAplicacao || '-'}</span></p>
-                    <p><strong>Status:</strong> <span id="detail-status" style="color:${statusColor}">${order.status.toUpperCase()}</span></p>
-                </div>
-                <div style="border-left: 2px solid #ddd; padding-left: 15px; display: flex; flex-direction: column; justify-content: center;">
-                    <h4 style="margin: 0 0 5px 0; color: #0f172a;">RESUMO GERAL</h4>
-                    <p style="margin: 2px 0;"><strong>Fazendas:</strong> ${uniqueFarms.size}</p>
-                    <p style="margin: 2px 0;"><strong>Talhões:</strong> ${order.items.length}</p>
-                    <p style="margin: 2px 0; font-size: 1.1em; color: var(--primary);"><strong>Total Área:</strong> ${totalArea.toFixed(2)} ha</p>
-                </div>
-            </div>
-        `;
-    }
-	
-	// --- LÓGICA DO BOTÃO EDITAR (NOVO) ---
-    const footerDiv = document.querySelector('#order-details-modal .modal-footer');
-    
-    // Remove botão de editar antigo se existir (para não duplicar)
-    const oldEditBtn = document.getElementById('btn-edit-os');
-    if(oldEditBtn) oldEditBtn.remove();
-
-    // Só permite editar se estiver PENDENTE
-    if(order.status === 'pendente') {
-        const editBtn = document.createElement('button');
-        editBtn.id = 'btn-edit-os';
-        editBtn.className = 'btn btn-primary'; 
-        editBtn.style.marginRight = 'auto'; // Joga para a esquerda
-        editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Pedido';
-        editBtn.onclick = function() { startEditOS(orderId); };
-        
-        // Adiciona no começo do rodapé
-        footerDiv.insertBefore(editBtn, footerDiv.firstChild);
-    }
-
-    // Abre a modal
-    const modal = document.getElementById('order-details-modal');
-    if(modal) modal.classList.remove('hidden');
+body.dark-mode .farm-title { 
+    background-color: #334155; 
+    color: #fff; 
+    border-color: #475569; 
 }
 
-// Fecha o modal do relatório e destrava a tela
-function closeOrderDetails() {
-    const modal = document.getElementById('order-details-modal');
-    modal.classList.add('hidden'); // Esconde o modal
-    
-    // Garante que o scroll da página volte a funcionar
-    document.body.style.overflow = 'auto'; 
+body.dark-mode .plot-item:hover { 
+    background-color: #334155; 
 }
 
-function printOrderReport() {
-    // 1. Muda o título da página temporariamente
-    const originalTitle = document.title;
-    
-    try {
-        const clientName = document.getElementById('detail-client').innerText;
-        const date = document.getElementById('detail-date').innerText.split(': ')[1].replace(/\//g, '-');
-        document.title = `Pedido_${clientName}_${date}`;
-    } catch (e) {
-        document.title = "Relatorio_Solicitacao";
-    }
-
-    // --- MUDANÇA AQUI: Adiciona a classe específica para Relatório ---
-    document.body.classList.add('printing-report');
-
-    // 2. Chama a impressão
-    window.print();
-
-    // 3. Remove a classe e devolve o título original
-    // O timeout garante que o navegador tenha tempo de processar os estilos antes de remover
-    setTimeout(() => {
-        document.body.classList.remove('printing-report');
-        document.title = originalTitle;
-    }, 500);
+body.dark-mode #config-panel { 
+    background-color: #1e293b; 
+    color: #fff; 
+    border-color: #475569; 
+}
+body.dark-mode #config-panel label { color: #ccc; }
+body.dark-mode #config-panel input { 
+    background-color: #0f172a; 
+    color: #fff; 
+    border-color: #475569; 
 }
 
+body.dark-mode .admin-content { 
+    background-color: #0f172a; 
+} 
 
-function saveProjectJSON() {
-    // 1. Captura os dados atuais dos inputs
-    const projectData = {
-        meta: {
-            version: "1.0",
-            savedAt: new Date().toISOString(),
-            system: "DS Portal"
-        },
-        project: {
-            title: document.getElementById('cfg-title-text').value,
-            client: document.getElementById('client-name-display') ? document.getElementById('client-name-display').innerText : "Cliente"
-        },
-        styles: {
-            strokeColor: document.getElementById('cfg-stroke-color').value,
-            strokeWidth: document.getElementById('cfg-stroke-width').value,
-            fontSize: document.getElementById('cfg-font-size').value,
-            fontColor: document.getElementById('cfg-font-color').value,
-            fontLineHeight: document.getElementById('cfg-font-line-height').value,
-            fontStrokeEnable: document.getElementById('cfg-font-stroke-enable').checked,
-            fontStrokeColor: document.getElementById('cfg-font-stroke-color').value,
-            fontStrokeWidth: document.getElementById('cfg-font-stroke-width').value
-        },
-        legend: {
-            size: document.getElementById('cfg-legend-size').value,
-            spacing: document.getElementById('cfg-legend-spacing').value,
-            boxSize: document.getElementById('cfg-legend-box-size').value,
-            stroke: document.getElementById('cfg-legend-stroke').value
-        },
-        // --- AQUI ESTÁ O PULO DO GATO: SALVAMOS OS DADOS DO MAPA ---
-        data: loadedOSFeatures
-    };
-
-    // 2. Cria o arquivo para download
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(projectData, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    
-    // Nome do arquivo limpo e organizado
-    const cleanTitle = projectData.project.title.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-    const fileName = `projeto_${cleanTitle}_${new Date().toISOString().slice(0,10)}.json`;
-    
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", fileName);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+body.dark-mode .section-header h2 { 
+    color: #f1f5f9; 
 }
 
+body.dark-mode .table-container,
+body.dark-mode .form-card,
+body.dark-mode .modal-box {
+    background-color: #1e293b; 
+    border-color: #334155;
+    color: #f1f5f9;
+    box-shadow: none;
+}
 
-// Função global para mostrar mensagens bonitas
-function showToast(message, type = 'success') {
-    // 1. Cria o elemento
-    const toast = document.createElement('div');
-    toast.className = `toast-notification ${type}`;
+body.dark-mode table thead { background-color: #0f172a; } 
+body.dark-mode table th { color: #94a3b8; }
+body.dark-mode table tbody tr:hover { background-color: #334155; }
+body.dark-mode table td { color: #f1f5f9; border-color: #334155; }
+
+body.dark-mode input, 
+body.dark-mode select {
+    background-color: #0f172a;
+    border-color: #334155;
+    color: #fff;
+}
+body.dark-mode input:focus,
+body.dark-mode select:focus { 
+    border-color: var(--accent); 
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.farm-group {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    background: var(--white);
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.farm-header {
+    padding: 15px;
+    background: #f8fafc; 
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+    font-weight: 600;
+    color: var(--primary);
+    border-bottom: 1px solid transparent; 
+    transition: background 0.2s;
+}
+
+.farm-header:active {
+    background: #e2e8f0; 
+}
+
+.farm-content {
+    display: none; 
+    background: var(--white);
+    border-top: 1px solid var(--border);
+}
+
+.farm-group.open .farm-content {
+    display: block; 
+    animation: slideDown 0.3s ease-out;
+}
+
+.farm-group.open .farm-header {
+    background: var(--accent); 
+    color: white; 
+}
+
+.farm-arrow {
+    transition: transform 0.3s ease;
+}
+
+.farm-group.open .farm-arrow {
+    transform: rotate(180deg);
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.plot-item {
+    padding: 12px 15px; 
+    font-size: 0.95rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.client-plot-label {
+    background: transparent !important; 
+    border: none !important;            
+    box-shadow: none !important;        
+    color: #ffffff !important;
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.client-plot-label::before {
+    display: none;
+}
+
+.hide-labels .client-plot-label {
+    opacity: 0 !important;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s; 
+}
+
+/* ================================================================= */
+/* BOTÃO FLUTUANTE DE OS (INTELIGENTE) INÍCIO DO CÓDIGO                              */
+/* ================================================================= */
+
+#fab-os-mobile {
+    position: fixed;
+    bottom: 90px; /* Altura segura acima do menu inferior */
+    left: 50%;
     
-    // 2. Define ícone baseado no tipo
-    let icon = '<i class="fa-solid fa-check-circle"></i>';
-    if(type === 'error') icon = '<i class="fa-solid fa-triangle-exclamation"></i>';
-    if(type === 'info')  icon = '<i class="fa-solid fa-circle-info"></i>';
-
-    toast.innerHTML = `${icon} <span>${message}</span>`;
+    /* 1. VOLTA A FICAR ESCONDIDO LÁ EMBAIXO */
+    transform: translateX(-50%) translateY(150px); 
     
-    // 3. Adiciona na tela
-    document.body.appendChild(toast);
-
-    // 4. Animação de entrada (pequeno delay para o CSS processar)
-    setTimeout(() => toast.classList.add('show'), 100);
-
-    // 5. Remove depois de 4 segundos
-    setTimeout(() => {
-        toast.classList.remove('show');
-        setTimeout(() => toast.remove(), 300); // Espera a animação de saída
-    }, 4000);
+    background: #2ecc71; 
+    color: white;
+    padding: 14px 28px;
+    border-radius: 50px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    border: none;
+    
+    /* Mantém o Z-Index alto para ficar sobre o mapa */
+    z-index: 2147483647 !important; 
+    
+    font-weight: bold;
+    font-size: 1rem;
+    display: flex; 
+    align-items: center; 
+    gap: 10px;
+    
+    /* Animação suave para subir/descer */
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.27);
+    
+    /* 2. NÃO CLICÁVEL ENQUANTO ESTIVER ESCONDIDO */
+    pointer-events: none; 
 }
 
-
-// Função de Pesquisa do Cliente
-function filterClientList() {
-    const term = document.getElementById('client-search-input').value.toLowerCase();
-    const groups = document.querySelectorAll('.farm-group');
-
-    groups.forEach(group => {
-        // Pega o nome da Fazenda (F01 - Nome)
-        const farmName = group.querySelector('.farm-header span').innerText.toLowerCase();
-        
-        // Pega todos os talhões dessa fazenda
-        const items = group.querySelectorAll('.plot-item');
-        let hasMatchInPlots = false;
-
-        // 1. Verifica se a FAZENDA combina com a pesquisa
-        if (farmName.includes(term)) {
-            group.style.display = "block"; // Mostra o grupo
-            items.forEach(item => item.style.display = "flex"); // Mostra todos os itens
-            // Se a pesquisa estiver vazia, fecha o acordeão (opcional)
-            if(term === "") group.classList.remove('open');
-            return; // Sai daqui, já achou a fazenda inteira
-        }
-
-        // 2. Se a fazenda não combinou, verifica os TALHÕES um por um
-        items.forEach(item => {
-            const plotName = item.querySelector('span').innerText.toLowerCase();
-            
-            if (plotName.includes(term)) {
-                item.style.display = "flex"; // Mostra esse talhão
-                hasMatchInPlots = true;
-            } else {
-                item.style.display = "none"; // Esconde os outros
-            }
-        });
-
-        // 3. Decide se mostra ou esconde o GRUPO da Fazenda
-        if (hasMatchInPlots) {
-            group.style.display = "block";
-            group.classList.add('open'); // ABRE A FAZENDA AUTOMATICAMENTE
-        } else {
-            group.style.display = "none"; // Esconde a fazenda inteira se nada combinar
-        }
-    });
+/* 3. ESTA É A REGRA QUE FAZ ELE SUBIR QUANDO SELECIONA */
+/* O Javascript adiciona essa classe .visible */
+#fab-os-mobile.visible {
+    transform: translateX(-50%) translateY(0); /* Sobe para a posição original */
+    pointer-events: auto; /* Fica clicável */
 }
 
-
-// Função para Concluir a OS
-function finishOS(osId) {
-    if(!confirm("Deseja marcar esta solicitação como CONCLUÍDA?")) return;
-
-    // Atualiza o status no banco de dados
-    db.collection('service_orders').doc(osId).update({
-        status: 'concluido',
-        dataConclusao: new Date()
-    }).then(() => {
-        showToast("Solicitação concluída com sucesso!", "success");
-        
-        // --- CORREÇÃO AQUI ---
-        // Chama a função correta que atualiza a tabela do seu sistema
-        loadServiceOrders(); 
-        
-        // Se houver algum modal de detalhes aberto, fecha (evita erros)
-        if(typeof closeOrderDetails === 'function') closeOrderDetails(); 
-        if(typeof closeModal === 'function') closeModal();
-
-    }).catch(error => {
-        console.error("Erro ao concluir:", error);
-        showToast("Erro ao concluir solicitação.", "error");
-    });
+/* Ícone */
+#fab-os-mobile i {
+    font-size: 1.2rem;
 }
 
+/* ================================================================= */
+/* BOTÃO FLUTUANTE DE OS (INTELIGENTE) FIM DO CÓDIGO                 */
+/* ================================================================= */
 
-// Função para Salvar a Cor escolhida
-function saveFarmColor() {
-    const fid = document.getElementById('map-admin-farm-select').value;
-    const color = document.getElementById('farm-color-picker').value;
 
-    if(!fid) {
-        showToast("Selecione uma fazenda primeiro.", "error");
-        return;
+
+/* ================================================================= */
+/* HISTÓRICO DE PEDIDOS (CLIENTE)                                 */
+/* ================================================================= */
+
+.history-item {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--white);
+    transition: background 0.2s;
+}
+
+.history-item:last-child { border-bottom: none; }
+.history-item:hover { background: #f8fafc; }
+
+.history-info strong { display: block; color: var(--text-main); font-size: 0.95rem; }
+.history-info small { color: var(--text-light); font-size: 0.85rem; }
+
+.status-badge {
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.status-pendente { background-color: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; }   
+.status-analise  { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #dbeafe; }   
+.status-concluido{ background-color: #ecfdf5; color: #047857; border: 1px solid #d1fae5; }   
+.status-cancelado{ background-color: #fef2f2; color: #b91c1c; border: 1px solid #fee2e2; }   
+
+body.dark-mode .history-item { background-color: #1e293b; border-color: #334155; }
+body.dark-mode .history-item:hover { background-color: #0f172a; }
+body.dark-mode .status-pendente { background: #431407; color: #fdba74; border-color: #7c2d12; }
+body.dark-mode .status-concluido { background: #064e3b; color: #6ee7b7; border-color: #065f46; }
+
+.report-content {
+    padding: 30px;
+    background: white;
+    color: #1e293b !important; 
+}
+
+.report-content h2, 
+.report-content h3, 
+.report-content h4, 
+.report-content p, 
+.report-content span, 
+.report-content strong,
+.report-content td {
+    color: #1e293b !important;
+}
+
+.report-header {
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 20px;
+}
+
+.report-logo h2 { margin: 0; display: inline-block; vertical-align: middle; margin-left: 10px; }
+.report-meta p { margin: 2px 0; text-align: right; font-size: 0.9em; }
+
+.report-info-box {
+    background: #f8fafc;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+.report-info-box p { margin: 5px 0; font-size: 1rem; }
+.highlight-type { font-weight: bold; color: var(--accent) !important; text-transform: uppercase; }
+
+.report-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.report-table th { 
+    background: #e2e8f0; 
+    color: #334155 !important; 
+    text-align: left; 
+    padding: 10px; 
+    font-size: 0.9em; 
+    border-bottom: 2px solid #cbd5e1; 
+}
+.report-table td { padding: 10px; border-bottom: 1px solid #e2e8f0; font-size: 0.95em; }
+.report-footer { margin-top: 40px; text-align: center; font-size: 0.8em; border-top: 1px solid #e2e8f0; padding-top: 10px; }
+
+#order-details-modal .modal-box {
+    display: flex;
+    flex-direction: column;
+    max-height: 85vh; 
+    overflow: hidden; 
+}
+
+#printable-order-content {
+    flex: 1;           
+    overflow-y: auto;  
+    padding: 20px;     
+    min-height: 0;     
+}
+
+.modal-footer {
+    flex-shrink: 0;    
+    background: #fff;  
+    border-top: 1px solid #eee;
+    padding: 15px;
+    z-index: 10;
+}
+
+#map-controls-bar {
+    background: var(--white);
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0; 
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    z-index: 10;
+}
+
+#map-controls-bar select {
+    margin-bottom: 0 !important; 
+    padding: 8px 12px;
+    width: auto;
+    flex: 1; 
+    max-width: 300px;
+    font-size: 0.9rem;
+    height: 40px;
+}
+
+#map-controls-bar .btn {
+    margin-bottom: 0 !important;
+    height: 40px;
+    padding: 0 20px;
+}
+
+#tab-mapas-admin {
+    padding: 0 !important; 
+    overflow: hidden; 
+}
+
+#admin-map {
+    flex: 1; 
+    width: 100%;
+    border: none;
+    border-radius: 0; 
+}
+
+.admin-map-label {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.admin-map-label div {
+    transform: translate(-50%, -50%) !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: max-content; 
+    color: white;
+    font-weight: bold;
+    font-size: 11px; 
+    line-height: 0.6; 
+    text-align: center;
+    white-space: nowrap;
+    text-shadow: 
+        -1px -1px 0 #000,  
+         1px -1px 0 #000,
+        -1px  1px 0 #000,
+         1px  1px 0 #000;
+    pointer-events: none; 
+}
+
+.map-zoomed-out .admin-map-label {
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.hide-labels .admin-map-label {
+    opacity: 0 !important;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s;
+}
+
+.admin-map-label div {
+    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000;
+}
+
+.toast-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #333;
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    font-weight: 500;
+    z-index: 10000; 
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.toast-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.toast-notification.success { background: #2ecc71; border-left: 5px solid #27ae60; }
+.toast-notification.error   { background: #e74c3c; border-left: 5px solid #c0392b; }
+.toast-notification.info    { background: #3498db; border-left: 5px solid #2980b9; }
+
+.search-box-wrapper {
+    position: sticky; 
+    top: 0;
+    z-index: 10;
+    background: #f8f9fa; 
+    padding: 10px 15px;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+}
+
+body.dark-mode .search-box-wrapper {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+.search-box-wrapper input {
+    width: 100%;
+    padding: 10px 10px 10px 35px; 
+    border: 1px solid #ccc;
+    border-radius: 20px; 
+    outline: none;
+    font-size: 14px;
+    transition: all 0.3s;
+}
+
+.search-box-wrapper input:focus {
+    border-color: #2ecc71; 
+    box-shadow: 0 0 5px rgba(46, 204, 113, 0.3);
+}
+
+.search-icon {
+    position: absolute;
+    left: 25px;
+    color: #888;
+    font-size: 14px;
+    pointer-events: none; 
+}
+
+.admin-sidebar {
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-brand {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+    padding: 15px 20px;
+    width: 100%;
+    box-sizing: border-box; 
+    min-height: 60px;
+}
+
+.admin-brand .brand-content {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    white-space: nowrap; 
+    overflow: hidden;
+}
+
+.btn-toggle-sidebar {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0.8;
+    transition: 0.3s;
+}
+.btn-toggle-sidebar:hover { opacity: 1; transform: scale(1.1); }
+
+.admin-sidebar.collapsed {
+    width: 70px !important; 
+}
+
+.admin-sidebar.collapsed .sidebar-text,
+.admin-sidebar.collapsed span {
+    display: none !important;
+    opacity: 0;
+}
+
+.admin-sidebar.collapsed .admin-menu-item {
+    justify-content: center;
+    padding: 15px 0;
+}
+.admin-sidebar.collapsed .admin-menu-item i {
+    margin-right: 0;
+    font-size: 1.4rem; 
+}
+
+.admin-sidebar.collapsed .admin-brand {
+    justify-content: center; 
+    padding: 15px 0;
+}
+
+.admin-sidebar.collapsed .brand-content {
+    display: none !important; 
+}
+
+#farm-color-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    padding: 4px 8px;
+    border-radius: 30px; 
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    height: 38px;
+}
+
+#farm-color-picker {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+#color-preview-circle {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+    background-color: #333; 
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: inset 0 0 0 2px white; 
+}
+
+#color-preview-circle:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 8px rgba(0,0,0,0.2), inset 0 0 0 2px white;
+}
+
+.btn-icon-save {
+    background: #22c55e;
+    color: white;
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 12px;
+    transition: 0.2s;
+}
+
+.btn-icon-save:hover {
+    background: #16a34a;
+    transform: scale(1.1);
+}
+
+.bottom-navbar {
+    height: calc(60px + env(safe-area-inset-bottom)); 
+    background: white;
+    border-top: 1px solid #ddd;
+    display: flex;
+    justify-content: space-around;
+    align-items: center; 
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+    z-index: 9999;
+    padding-bottom: env(safe-area-inset-bottom); 
+    position: fixed; 
+    bottom: 0;
+    width: 100%;
+}
+
+.nav-item {
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8; 
+    font-size: 10px;
+    gap: 4px;
+    width: 100%;
+    height: 100%;
+}
+
+.nav-item i {
+    font-size: 20px;
+    transition: transform 0.2s;
+}
+
+.nav-item.active {
+    color: #2563eb; 
+    font-weight: bold;
+}
+
+.nav-item.active i {
+    transform: translateY(-2px);
+}
+
+.client-tab-content {
+    display: none; 
+    height: 100%;
+    width: 100%;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+.client-tab-content.active {
+    display: block; 
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.profile-card {
+    background: white;
+    padding: 20px;
+    border-radius: 15px;
+    text-align: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-bottom: 20px;
+}
+
+.profile-menu { 
+    display: flex; 
+    flex-direction: column; 
+    gap: 10px; 
+    width: 100%;
+}
+
+.profile-btn {
+    padding: 15px; 
+    background: white; 
+    border: 1px solid #eee;
+    border-radius: 8px; 
+    text-align: left; 
+    font-size: 14px;
+    display: flex; 
+    align-items: center; 
+    gap: 10px; 
+    color: #333;
+    width: 100%;
+    cursor: pointer;
+}
+
+.profile-btn.logout { 
+    color: #ef4444; 
+    border-color: #fee2e2; 
+    background: #fef2f2; 
+}
+
+.profile-avatar {
+    position: relative; 
+    width: 100px;       
+    height: 100px;
+    background: #e0f2fe;
+    color: #0284c7;
+    border-radius: 50%;
+    margin: 0 auto 15px auto;
+    cursor: pointer;
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
+    overflow: hidden; 
+    border: 3px solid white;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+#profile-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover; 
+    display: none;     
+}
+
+#profile-upload {
+    display: none;
+}
+
+.camera-badge {
+    position: absolute;
+    bottom: 5px;
+    right: 5px;
+    background: var(--accent); 
+    color: white;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    border: 2px solid white;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.mobile-header {
+    background: white; padding: 15px;
+    border-bottom: 1px solid #eee;
+    position: sticky; top: 0; z-index: 100;
+}
+.mobile-header h2 { margin: 0; font-size: 18px; }
+
+body.dark-mode .bottom-navbar,
+body.dark-mode .mobile-header,
+body.dark-mode .profile-card,
+body.dark-mode .profile-btn {
+    background: #1e293b; border-color: #334155; color: white;
+}
+body.dark-mode .nav-item.active { color: #38bdf8; }
+
+#client-content-area {
+    background-color: #f8f9fa;
+}
+
+body.dark-mode #client-content-area {
+    background-color: #0f172a; 
+}
+
+body.dark-mode .farm-header {
+    background-color: #1e293b; 
+    color: white;              
+    border-bottom: 1px solid #334155;
+}
+
+body.dark-mode .plot-item {
+    background-color: #1e293b;
+    color: #cbd5e1;
+    border-bottom: 1px solid #334155;
+}
+
+body.dark-mode .plot-item:hover {
+    background-color: #334155;
+}
+
+.leaflet-control-locate:hover {
+    background-color: #f4f4f4;
+    color: #000;
+}
+
+@keyframes pulse-blue {
+    0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+.locating-pulse {
+    animation: pulse-blue 1.5s infinite;
+    color: #2563eb;
+}
+
+.admin-sidebar {
+    padding-top: calc(20px + env(safe-area-inset-top));
+}
+
+#config-panel {
+    padding-top: calc(15px + env(safe-area-inset-top));
+}
+
+.modal-overlay {
+    top: 0; 
+    padding-top: env(safe-area-inset-top); 
+}
+
+body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+}
+
+.leaflet-right.leaflet-bottom {
+    bottom: 0 !important;
+    right: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.leaflet-control-zoom,
+.gps-control-box {
+    position: absolute !important;
+    right: 15px !important; 
+    left: auto !important;
+    margin: 0 !important; 
+    width: 34px !important;
+    z-index: 1000 !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3) !important;
+    border-radius: 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.leaflet-control-zoom {
+    bottom: 170px !important; 
+    padding: 0 !important;
+}
+
+.gps-control-box {
+    bottom: 250px !important; 
+    height: 34px !important; 
+}
+
+.leaflet-control-locate {
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px !important;
+    color: #333 !important;
+    text-decoration: none !important;
+}
+
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out {
+    width: 34px !important;
+    height: 34px !important;
+    line-height: 34px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    color: #333;
+    text-decoration: none;
+}
+
+.gps-control-box:hover { background-color: #f4f4f4 !important; }
+
+@keyframes pulse-blue {
+    0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+.locating-pulse { animation: pulse-blue 1.5s infinite; color: #2563eb; }
+
+.leaflet-control-attribution {
+    position: absolute !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    background: rgba(255, 255, 255, 0.6) !important;
+    margin: 0 !important;
+    pointer-events: none;
+}
+
+.leaflet-container {
+    will-change: transform;       
+    background: #dddddd;          
+    -webkit-overflow-scrolling: touch; 
+}
+
+.leaflet-interactive {
+    touch-action: none;
+}
+
+.leaflet-fade-anim .leaflet-tile,
+.leaflet-zoom-anim .leaflet-zoom-animated {
+    will-change: opacity, transform;
+    transition: transform 0.25s cubic-bezier(0,0,0.25,1);
+}
+
+#map {
+    touch-action: none !important; 
+    will-change: transform;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Botão de Localizar dentro da Lista */
+.btn-locate-plot {
+    background: transparent;
+    border: none;
+    color: #94a3b8; /* Cinza suave */
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 1.1rem;
+    transition: color 0.2s, transform 0.2s;
+    margin-left: auto; /* Empurra o botão para a direita */
+    border-radius: 50%;
+}
+
+.btn-locate-plot:hover {
+    color: var(--accent); /* Fica azul ao passar o mouse */
+    background-color: #eff6ff;
+    transform: scale(1.1);
+}
+
+.btn-locate-plot:active {
+    transform: scale(0.95);
+}
+
+/* Ajuste fino no item da lista para acomodar o botão */
+.plot-item {
+    padding: 8px 10px;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer;
+    gap: 10px; /* Espaço entre checkbox, nome e botão */
+}
+
+/* Garante que o nome ocupe o espaço disponível */
+.plot-item span {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+    /* =============================================== */
+    /* IMPRESSÃO                                       */
+    /* =============================================== */
+
+@media print {
+    @page { 
+        /* size: auto permite definir A4, A3 ou A0 na hora de imprimir */
+        size: auto;
+        margin: 5mm;
     }
 
-    db.collection('fazendas').doc(fid).update({
-        cor: color // Salva a cor no banco de dados
-    }).then(() => {
-        showToast("Cor da fazenda atualizada!", "success");
-        // Recarrega o mapa para ver a mudança
-        loadAdminMap(fid); 
-    }).catch(e => {
-        showToast("Erro ao salvar cor.", "error");
-        console.error(e);
-    });
-}
-
-//============================================
-// 1. Função para Abrir/Fechar o Menu Lateral
-//============================================
-
-function toggleSidebar() {
-    const sidebar = document.querySelector('.admin-sidebar');
-    sidebar.classList.toggle('collapsed');
+    /* 1. REGRA GERAL: Limpeza total */
+    body * {
+        visibility: hidden; 
+    }
     
-    // IMPORTANTE: Força o mapa a se ajustar ao novo espaço
-    setTimeout(() => {
-        if(adminMap) adminMap.invalidateSize();
-        if(osMap) osMap.invalidateSize();
-    }, 350); // Espera a animação do CSS terminar
-}
+    .no-print {
+        display: none !important;
+    }
 
-// 2. Atualiza a cor da bolinha visualmente
-function updateColorPreview(color) {
-    const circle = document.getElementById('color-preview-circle');
-    if(circle) {
-        circle.style.backgroundColor = color;
+    /* ======================================================= */
+    /* CENÁRIO 1: ADMIN (MAPA DA OS) - CORREÇÃO A0             */
+    /* ======================================================= */
+    
+    body.printing-map {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: white !important;
+        overflow: visible !important;
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    /* Configura o container para aceitar o tamanho gigante */
+    body.printing-map #os-editor-overlay {
+        position: absolute !important; /* Absolute é mais seguro que Fixed para impressão */
+        top: 0 !important; left: 0 !important;
+        width: 4500px !important;  /* Mantém a largura A0 definida no JS */
+        height: 3182px !important; /* Mantém a altura A0 definida no JS */
+        background: white !important;
+        z-index: 99999;
+        display: block !important;
+        overflow: visible !important;
+    }
+
+    /* AQUI ESTÁ A CORREÇÃO DO "BRANCO" */
+    /* Forçamos o mapa a ficar no canto 0,0 e removemos o zoom de tela */
+    body.printing-map #os-map-area,
+    body.printing-map.preview-active #os-map-area {
+        position: absolute !important;
+        top: 0 !important; 
+        left: 0 !important;
+        
+        width: 4500px !important; 
+        height: 3182px !important;
+        
+        /* Remove o scale(0.2) e a centralização (-50%) que quebravam o PDF */
+        transform: none !important; 
+        
+        border: none !important; 
+        box-shadow: none !important;
+        margin: 0 !important;
+    }
+
+    /* Garante visibilidade dos itens */
+    body.printing-map #os-editor-overlay,
+    body.printing-map #os-editor-overlay * {
+        visibility: visible;
+    }
+    
+    body.printing-map #os-map-title,
+    body.printing-map #os-map-logo,
+    body.printing-map #os-north-arrow,
+    body.printing-map #os-map-legend,
+    body.printing-map #os-scale-container,
+    body.printing-map .leaflet-control-scale-line {
+        visibility: visible !important;
+    }
+
+    /* Esconde ferramentas */
+    body.printing-map #config-panel,
+    body.printing-map .leaflet-control-zoom {
+        display: none !important;
+    }
+
+    /* ======================================================= */
+    /* CENÁRIO 2: CLIENTE (RELATÓRIO) - TELA INFINITA          */
+    /* (Correção da Página em Branco e Corte)                  */
+    /* ======================================================= */
+
+    /* Configuração do CORPO para RELATÓRIO */
+    body.printing-report,
+    body.printing-report html {
+        background: white !important;
+        height: auto !important;
+        min-height: 100% !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* CORREÇÃO DA PÁGINA BRANCA: */
+    /* Não escondemos o #main-wrapper (pai). Escondemos apenas os vizinhos que atrapalham. */
+    body.printing-report #client-interface,
+    body.printing-report #admin-interface,
+    body.printing-report .bottom-navbar,
+    body.printing-report .admin-sidebar,
+    body.printing-report #mobile-menu-btn,
+    body.printing-report #login-overlay {
+        display: none !important;
+    }
+
+    /* Configura o Modal para assumir o controle da página */
+    body.printing-report #order-details-modal {
+        visibility: visible !important;
+        
+        /* Posiciona no topo absoluto, cobrindo qualquer resquício */
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        
+        width: 100% !important;
+        height: auto !important; /* Altura livre */
+        
+        z-index: 999999;
+        background: white !important;
+        overflow: visible !important;
+        display: block !important;
+    }
+
+    /* Garante visibilidade dos filhos */
+    body.printing-report #order-details-modal * {
+        visibility: visible !important;
+    }
+
+    /* DESTRAVA A ALTURA DA CAIXA (Correção do corte de conteúdo) */
+    body.printing-report .modal-box {
+        position: static !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        
+        /* Remove qualquer limite de altura */
+        height: auto !important;
+        max-height: none !important; 
+        
+        display: block !important;
+        box-shadow: none !important;
+        border: none !important;
+        overflow: visible !important;
+        background: white !important;
+    }
+
+    body.printing-report #printable-order-content {
+        height: auto !important;
+        overflow: visible !important;
+        padding: 0 !important;
+        display: block !important;
+    }
+
+    /* Esconde cabeçalho e rodapé do modal (botões de fechar/voltar) */
+    body.printing-report .modal-header,
+    body.printing-report .modal-footer,
+    body.printing-report .close-btn {
+        display: none !important;
+    }
+
+    /* Tabelas profissionais */
+    body.printing-report table {
+        width: 100% !important;
+        border-collapse: collapse;
+    }
+    body.printing-report tr {
+        page-break-inside: avoid;
+    }
+    body.printing-report thead {
+        display: table-header-group;
     }
 }
 
 
-// Atualiza a cor da bolinha visualmente (Chamada pelo onchange do HTML)
-function updateColorPreview(color) {
-    const circle = document.getElementById('color-preview-circle');
-    if(circle) {
-        circle.style.backgroundColor = color;
-    }
+/* ================================================================= */
+/* ESTATÍSTICAS DO PERFIL (NOVO)                                     */
+/* ================================================================= */
+
+/* Resumo Geral (Cards do Topo) */
+.stats-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 20px;
 }
 
-// Salva a cor no banco de dados (Chamada pelo botão de check)
-function saveFarmColor() {
-    const fid = document.getElementById('map-admin-farm-select').value;
-    const color = document.getElementById('farm-color-picker').value;
-
-    if(!fid) {
-        showToast("Selecione uma fazenda primeiro.", "error");
-        return;
-    }
-
-    db.collection('fazendas').doc(fid).update({
-        cor: color
-    }).then(() => {
-        showToast("Cor atualizada!", "success");
-        loadAdminMap(fid); // Recarrega para confirmar
-    }).catch(e => {
-        console.error(e);
-        showToast("Erro ao salvar cor.", "error");
-    });
+.stat-card-main {
+    background: white;
+    padding: 15px;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    text-align: center;
+    border: 1px solid var(--border);
 }
 
+.stat-card-main h3 {
+    margin: 0;
+    font-size: 1.8rem;
+    color: var(--accent);
+    font-weight: 700;
+}
 
-// === SISTEMA OFFLINE RURAL ===
+.stat-card-main p {
+    margin: 5px 0 0 0;
+    font-size: 0.8rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-weight: 600;
+}
 
-// 1. Salva a OS no LocalStorage (Memória do celular)
-function saveOfflineOrder(orderData) {
-    // Pega o que já tem salvo
-    let pending = JSON.parse(localStorage.getItem('ds_offline_orders') || "[]");
+/* Lista de Fazendas */
+.farm-stat-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    margin-bottom: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    transition: all 0.2s ease;
+}
+
+.farm-stat-header {
+    padding: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    background: white;
+}
+
+.farm-stat-header:active {
+    background-color: #f8fafc;
+}
+
+.farm-info-left strong {
+    display: block;
+    color: var(--primary);
+    font-size: 1rem;
+    margin-bottom: 2px;
+}
+
+.farm-info-left small {
+    color: var(--text-light);
+    font-size: 0.85rem;
+}
+
+.farm-info-right {
+    text-align: right;
+}
+
+.farm-total-area {
+    background: #eff6ff;
+    color: var(--accent);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    display: inline-block;
+    margin-bottom: 4px;
+}
+
+.toggle-icon {
+    font-size: 0.8rem;
+    color: #cbd5e1;
+    margin-left: 8px;
+    transition: transform 0.3s;
+}
+
+/* Estado Aberto */
+.farm-stat-card.open .toggle-icon {
+    transform: rotate(180deg);
+}
+
+.farm-stat-details {
+    display: none;
+    background: #f8fafc;
+    border-top: 1px solid var(--border);
+    padding: 10px 15px;
+    animation: slideDown 0.3s ease;
+}
+
+.farm-stat-card.open .farm-stat-details {
+    display: block;
+}
+
+/* Tabela de Talhões */
+.plot-stat-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+    font-size: 0.9rem;
+    color: var(--text-main);
+}
+
+.plot-stat-row:last-child {
+    border-bottom: none;
+}
+
+/* Dark Mode Support */
+body.dark-mode .stat-card-main,
+body.dark-mode .farm-stat-card,
+body.dark-mode .farm-stat-header {
+    background: #1e293b;
+    border-color: #334155;
+}
+body.dark-mode .farm-stat-details { background: #0f172a; border-color: #334155; }
+body.dark-mode .plot-stat-row { border-color: #334155; color: #cbd5e1; }
+body.dark-mode .farm-total-area { background: #172554; color: #60a5fa; }
+body.dark-mode .farm-info-left strong { color: #f1f5f9; }
+
+/* ================================================================= */
+/* PAINEL DE RESUMO DA SELEÇÃO (NOVO)                                */
+/* ================================================================= */
+
+#selection-summary-card {
+    position: fixed;
+    bottom: 150px; /* Fica acima do botão FAB (que está a 90px) */
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
     
-    // Adiciona a nova (Como não tem serverTimestamp offline, usamos Date)
-    orderData.createdAt = new Date(); 
-    orderData.offlineCreated = true; // Marca que foi criado offline
+    background: white;
+    width: 90%;
+    max-width: 400px;
+    padding: 12px 20px;
+    border-radius: 12px;
     
-    pending.push(orderData);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     
-    // Salva de volta
-    localStorage.setItem('ds_offline_orders', JSON.stringify(pending));
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+    border: 1px solid var(--border);
+    z-index: 2147483647; /* Mesmo nível do FAB para ficar no topo */
     
-    alert("Sem internet! A solicitação foi salva no dispositivo e será enviada automaticamente quando o sinal voltar.");
-    resetOSForm();
-    updateOfflineBadge(); // Atualiza contador visual
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.27);
 }
 
-// 2. Sincroniza quando a internet volta
-function syncOfflineOrders() {
-    const pending = JSON.parse(localStorage.getItem('ds_offline_orders') || "[]");
-    
-    if (pending.length === 0) return; // Nada para enviar
-
-    showToast(`Sincronizando ${pending.length} pedidos...`, "info");
-
-    const promises = pending.map(order => {
-        // Remove a flag de controle antes de enviar
-        delete order.offlineCreated;
-        // Converte a data de string de volta para objeto data
-        order.createdAt = new Date(order.createdAt); 
-        
-        return db.collection('service_orders').add(order);
-    });
-
-    Promise.all(promises).then(() => {
-        // Se tudo deu certo, limpa a memória local
-        localStorage.removeItem('ds_offline_orders');
-        showToast("Todos os pedidos offline foram enviados!", "success");
-        updateOfflineBadge();
-        
-        // Atualiza o histórico se estiver aberto
-        if(!document.getElementById('client-history-modal').classList.contains('hidden')) {
-            openClientHistory();
-        }
-    }).catch(err => {
-        console.error("Erro na sincronização", err);
-        showToast("Erro ao sincronizar alguns pedidos.", "error");
-    });
+/* Quando estiver visível (adicionado via JS) */
+#selection-summary-card.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
 }
 
-// 3. Atualiza um aviso visual na tela (Opcional: Cria um ícone de nuvem)
-function updateOfflineBadge() {
-    const pending = JSON.parse(localStorage.getItem('ds_offline_orders') || "[]");
-    const count = pending.length;
-    
-    // Tenta achar o badge ou cria um
-    let badge = document.getElementById('offline-sync-badge');
-    
-    if (count > 0) {
-        if(!badge) {
-            // Cria o botãozinho flutuante de alerta
-            badge = document.createElement('div');
-            badge.id = 'offline-sync-badge';
-            badge.style.cssText = "position:fixed; top:10px; left:50%; transform:translateX(-50%); background:#e67e22; color:white; padding:8px 15px; border-radius:20px; z-index:9999; font-size:12px; font-weight:bold; box-shadow:0 2px 5px rgba(0,0,0,0.2); display:flex; align-items:center; gap:5px; cursor:pointer;";
-            badge.onclick = syncOfflineOrders; // Tenta forçar sync ao clicar
-            document.body.appendChild(badge);
-        }
-        badge.innerHTML = `<i class="fa-solid fa-cloud-arrow-up"></i> ${count} Pendentes (Sem Sinal)`;
-        badge.style.display = 'flex';
-    } else {
-        if(badge) badge.style.display = 'none';
-    }
+.summary-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
 }
 
-// === NAVEGAÇÃO INFERIOR (App Cliente) ===
-
-// === NAVEGAÇÃO INFERIOR (App Cliente) ===
-
-function switchClientTab(tabId) {
-    // 1. Esconde todas as abas
-    document.querySelectorAll('.client-tab-content').forEach(tab => {
-        tab.classList.remove('active');
-    });
-
-    // 2. Desativa todos os botões de baixo
-    document.querySelectorAll('.nav-item').forEach(btn => {
-        btn.classList.remove('active');
-    });
-
-    // 3. Mostra a aba escolhida
-    const targetTab = document.getElementById(tabId);
-    if(targetTab) targetTab.classList.add('active');
-
-    // 4. Ativa o botão correspondente
-    const navButtons = document.querySelectorAll('.nav-item');
-    if(tabId === 'tab-lista') navButtons[0].classList.add('active');
-    if(tabId === 'tab-mapa') navButtons[1].classList.add('active');
-    if(tabId === 'tab-perfil') navButtons[2].classList.add('active');
-
-    // 5. LÓGICA DO BOTÃO FLUTUANTE (FAB)
-    const fab = document.getElementById('fab-os-mobile');
-    const totalSelected = document.querySelectorAll('.chk-export:checked').length;
-
-    if (tabId === 'tab-perfil') {
-        // Se for perfil, esconde o botão na marra, mesmo se tiver seleção
-        fab.style.display = 'none'; 
-    } else {
-        // Se for Lista ou Mapa, volta a mostrar (mas só se tiver itens selecionados)
-        fab.style.display = 'flex'; 
-        
-        // Verifica se deve aparecer ou ficar escondido (efeito de subir/descer)
-        if (totalSelected > 0) {
-            fab.classList.add('visible');
-        } else {
-            fab.classList.remove('visible');
-        }
-    }
-
-    // 6. Recalcula tamanho do mapa se necessário
-    if(tabId === 'tab-mapa' && map) {
-        setTimeout(() => { map.invalidateSize(); }, 200);
-    }
+.stat-label {
+    font-size: 0.7rem;
+    color: var(--text-light);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 2px;
 }
 
-
-// Variável global para guardar a bolinha azul
-let userLocationMarker = null;
-let userLocationCircle = null;
-
-// --- FUNÇÃO QUE CRIA O BOTÃO (ATUALIZADA) ---
-function addLocationControl() {
-    const LocationControl = L.Control.extend({
-        options: { position: 'bottomright' },
-        onAdd: function(map) {
-            // AQUI ESTÁ O SEGREDO: Adicionei 'gps-control-box' para podermos alinhar a caixa
-            const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control gps-control-box');
-            
-            const button = L.DomUtil.create('a', 'leaflet-control-locate', container);
-            button.innerHTML = '<i class="fa-solid fa-crosshairs"></i>';
-            button.href = "#";
-            button.title = "Minha Localização";
-            
-            L.DomEvent.disableClickPropagation(button);
-            L.DomEvent.on(button, 'click', function(e) {
-                L.DomEvent.stop(e);
-                button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
-                button.classList.add('locating-pulse');
-                map.locate({setView: true, maxZoom: 16, enableHighAccuracy: true});
-            });
-            return container;
-        }
-    });
-    if(map) map.addControl(new LocationControl());
+.stat-value {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-main);
 }
 
-// --- EVENTOS DO LEAFLET (Quando acha ou erra) ---
-
-// 1. Se achar a localização
-function onLocationFound(e) {
-    const radius = e.accuracy / 2;
-    const btnLocate = document.querySelector('.leaflet-control-locate');
-    
-    // Restaura o ícone do botão
-    if(btnLocate) {
-        btnLocate.innerHTML = '<i class="fa-solid fa-location-arrow" style="color:#2563eb"></i>';
-        btnLocate.classList.remove('locating-pulse');
-    }
-
-    // Remove marcador anterior se existir
-    if (userLocationMarker) map.removeLayer(userLocationMarker);
-    if (userLocationCircle) map.removeLayer(userLocationCircle);
-
-    // Adiciona bolinha azul e círculo de precisão
-    userLocationMarker = L.marker(e.latlng, {
-        icon: L.divIcon({
-            className: 'custom-div-icon',
-            html: "<div style='background-color:#4285F4; width:12px; height:12px; border-radius:50%; border:2px solid white; box-shadow: 0 0 5px rgba(0,0,0,0.5);'></div>",
-            iconSize: [12, 12],
-            iconAnchor: [6, 6]
-        })
-    }).addTo(map).bindPopup("Você está aqui (Precisão: " + Math.round(radius) + "m)").openPopup();
-
-    userLocationCircle = L.circle(e.latlng, radius, {
-        color: '#4285F4',
-        fillColor: '#4285F4',
-        fillOpacity: 0.1,
-        weight: 1
-    }).addTo(map);
+.stat-value.highlight {
+    color: var(--accent); /* Azul destaque */
 }
 
-// 2. Se der erro (ex: sem GPS)
-function onLocationError(e) {
-    alert("Não foi possível obter sua localização. Verifique se o GPS está ativado.");
-    const btnLocate = document.querySelector('.leaflet-control-locate');
-    if(btnLocate) {
-        btnLocate.innerHTML = '<i class="fa-solid fa-crosshairs"></i>';
-        btnLocate.classList.remove('locating-pulse');
-    }
+.summary-divider {
+    width: 1px;
+    height: 25px;
+    background-color: var(--border);
 }
 
-// =================================================================
-// LÓGICA DA FOTO DE PERFIL (SALVA NO BANCO DE DADOS - FIRESTORE)
-// =================================================================
-
-// 1. Salvar Foto como Texto no Banco de Dados
-function saveProfilePhoto(input) {
-    const user = firebase.auth().currentUser;
-    
-    if (!user) {
-        alert("Faça login para mudar a foto.");
-        return;
-    }
-
-    if (input.files && input.files[0]) {
-        const file = input.files[0];
-        
-        // Mostra ícone carregando
-        const iconElement = document.getElementById('profile-icon');
-        if(iconElement) iconElement.className = "fa-solid fa-spinner fa-spin";
-
-        const reader = new FileReader();
-        reader.onload = function(e) {
-            const img = new Image();
-            img.src = e.target.result;
-            
-            img.onload = function() {
-                // --- COMPRESSÃO OBRIGATÓRIA ---
-                // O Firestore tem limite de tamanho, então precisamos reduzir bem a foto
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                
-                // Tamanho fixo de 200px (Suficiente para perfil e fica leve)
-                const maxWidth = 200; 
-                const scaleFactor = maxWidth / img.width;
-                
-                canvas.width = maxWidth;
-                canvas.height = img.height * scaleFactor;
-                
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                
-                // Converte para texto Base64 (Qualidade 0.6)
-                const base64String = canvas.toDataURL('image/jpeg', 0.6);
-                
-                // --- SALVA NO FIRESTORE (DB) ---
-                // Em vez de salvar arquivo, salvamos esse texto gigante no cadastro do usuário
-                db.collection('users').doc(user.uid).set({
-                    avatar: base64String
-                }, { merge: true }) // merge: true garante que não apague outros dados (nome, email)
-                .then(() => {
-                    console.log("Foto salva no banco de dados!");
-                    loadProfilePhoto(); // Atualiza a tela
-                    alert("Foto atualizada em todos os dispositivos!");
-                })
-                .catch((error) => {
-                    console.error("Erro ao salvar:", error);
-                    alert("Erro ao salvar foto.");
-                    if(iconElement) iconElement.className = "fa-solid fa-user";
-                });
-            }
-        }
-        reader.readAsDataURL(file);
-    }
+/* Modo Escuro */
+body.dark-mode #selection-summary-card {
+    background: #1e293b;
+    border-color: #334155;
 }
-
-// 2. Carregar Foto do Banco de Dados
-function loadProfilePhoto() {
-    firebase.auth().onAuthStateChanged((user) => {
-        if (user) {
-            const imgElement = document.getElementById('profile-image');
-            const iconElement = document.getElementById('profile-icon');
-            
-            // Busca os dados do usuário no Firestore
-            db.collection('users').doc(user.uid).onSnapshot((doc) => {
-                if (doc.exists && doc.data().avatar) {
-                    // Se tiver foto salva no banco
-                    const photoBase64 = doc.data().avatar;
-                    
-                    if (imgElement && iconElement) {
-                        imgElement.src = photoBase64;
-                        imgElement.style.display = 'block';
-                        iconElement.style.display = 'none';
-                    }
-                } else {
-                    // Se não tiver foto
-                    if(imgElement) imgElement.style.display = 'none';
-                    if(iconElement) {
-                        iconElement.style.display = 'flex'; // Flex para centralizar
-                        iconElement.className = "fa-solid fa-user";
-                    }
-                }
-            });
-        }
-    });
-}
-
-// Função para mostrar/esconder o campo "Outros"
-function checkOtherOption(selectElement) {
-    const customInput = document.getElementById('os-type-custom');
-    
-    if (selectElement.value === 'Outros') {
-        customInput.style.display = 'block'; // Mostra
-        customInput.focus(); // Já coloca o cursor lá pra digitar
-    } else {
-        customInput.style.display = 'none';  // Esconde
-        customInput.value = ''; // Limpa o que estava escrito se mudar de ideia
-    }
-}
-
-// ============================================
-// ESTATÍSTICAS DO PERFIL (NOVO)
-// ============================================
-
-function loadClientProfileStats(uid) {
-    const container = document.getElementById('profile-stats-area');
-    if (!container) return;
-
-    // Busca as fazendas do cliente no banco
-    db.collection('fazendas').where('donoUID', '==', uid).get().then(snap => {
-        if (snap.empty) {
-            container.innerHTML = "<p style='text-align:center; color:#777;'>Nenhuma fazenda cadastrada.</p>";
-            return;
-        }
-
-        let totalFarms = 0;
-        let totalGeneralHectares = 0;
-        let farmsHTML = "";
-
-        // Prepara array para ordenar
-        let farms = [];
-        snap.forEach(doc => farms.push(doc.data()));
-        farms.sort((a, b) => (a.numero || 0) - (b.numero || 0));
-
-        // Loop pelas fazendas
-        farms.forEach(f => {
-            totalFarms++;
-            let farmArea = 0;
-            let plotsHTML = "";
-            
-            // Ordena os talhões
-            // Ordenação "Natural" (Igual à tela principal)
-            const sortedTalhoes = f.talhoes ? f.talhoes.sort((a, b) => {
-                const nomeA = (a.nomeOriginal || `Talhão ${a.numero}`).trim();
-                const nomeB = (b.nomeOriginal || `Talhão ${b.numero}`).trim();
-                return nomeA.localeCompare(nomeB, undefined, { numeric: true, sensitivity: 'base' });
-            }) : [];
-
-            // Loop pelos talhões para calcular área e montar lista
-            sortedTalhoes.forEach(t => {
-                try {
-                    const geoData = JSON.parse(t.geometry);
-                    const areaM2 = turf.area(geoData);
-                    const areaHa = (areaM2 / 10000); // Converte m² para Hectares
-                    
-                    farmArea += areaHa;
-                    
-                    const tName = t.nomeOriginal || `Talhão ${t.numero}`;
-                    
-                    plotsHTML += `
-                        <div class="plot-stat-row">
-                            <span><i class="fa-solid fa-draw-polygon" style="font-size:0.8em; margin-right:5px; opacity:0.5;"></i> ${tName}</span>
-                            <strong>${areaHa.toFixed(2)} ha</strong>
-                        </div>
-                    `;
-                } catch (e) { console.error(e); }
-            });
-
-            totalGeneralHectares += farmArea;
-            const fNum = String(f.numero).padStart(2, '0');
-
-            // HTML DO CARD DA FAZENDA
-            // Usamos um onclick simples para abrir/fechar os detalhes
-            farmsHTML += `
-                <div class="farm-stat-card" id="stat-card-${fNum}">
-                    <div class="farm-stat-header" onclick="toggleStatCard(this)">
-                        <div class="farm-info-left">
-                            <strong>F${fNum} - ${f.nome}</strong>
-                            <small>${sortedTalhoes.length} talhões</small>
-                        </div>
-                        <div class="farm-info-right">
-                            <span class="farm-total-area">${farmArea.toFixed(2)} ha</span>
-                            <i class="fa-solid fa-chevron-down toggle-icon"></i>
-                        </div>
-                    </div>
-                    <div class="farm-stat-details">
-                        ${plotsHTML || '<small>Sem talhões demarcados</small>'}
-                    </div>
-                </div>
-            `;
-        });
-
-        // MONTA O HTML FINAL
-        const finalHTML = `
-            <div class="stats-summary-grid">
-                <div class="stat-card-main">
-                    <h3>${totalFarms}</h3>
-                    <p>Fazendas</p>
-                </div>
-                <div class="stat-card-main">
-                    <h3>${totalGeneralHectares.toFixed(2)}</h3>
-                    <p>Total Hectares</p>
-                </div>
-            </div>
-
-            <h4 style="margin: 20px 0 10px 0; font-size: 0.9rem; color: var(--text-light); text-transform: uppercase;">Detalhamento por Fazenda</h4>
-            
-            <div>
-                ${farmsHTML}
-            </div>
-        `;
-
-        container.innerHTML = finalHTML;
-    });
-}
-
-function startEditOS(osId) {
-    // 1. Acha o pedido
-    const order = loadedClientOrders.find(o => o.id === osId);
-    if(!order) return;
-
-    // 2. Define modo de edição
-    editingOSId = osId;
-
-    // 3. FECHA TUDO (Histórico, Detalhes, etc)
-    closeOrderDetails();
-    document.getElementById('client-history-modal').classList.add('hidden');
-    document.querySelectorAll('.modal-overlay').forEach(m => m.classList.add('hidden'));
-
-    // 4. VAI PARA A ABA LISTA
-    switchClientTab('tab-lista');
-
-    // 5. Limpa seleções visuais anteriores
-    document.querySelectorAll('.chk-export:checked').forEach(c => {
-        c.checked = false; 
-        c.dispatchEvent(new Event('change')); 
-    });
-
-    // 6. RE-SELECIONA OS TALHÕES DO PEDIDO
-    order.items.forEach(item => {
-        const selector = `.chk-export[data-farm-id="${item.farmId}"][data-plot-name="${item.realName}"]`;
-        const checkbox = document.querySelector(selector);
-        if(checkbox) {
-            checkbox.checked = true;
-            checkbox.dispatchEvent(new Event('change')); 
-        }
-    });
-
-    // 7. PREPARA O FORMULÁRIO (MAS MANTÉM ESCONDIDO)
-    // Preenche o tipo de aplicação que já estava salvo
-    const typeInput = document.getElementById('os-type-input');
-    const customInput = document.getElementById('os-type-custom');
-    
-    // Reseta primeiro
-    typeInput.value = "";
-    customInput.style.display = 'none';
-    customInput.value = "";
-
-    // Lógica para preencher o valor correto
-    if(order.tipoAplicacao) {
-        // Verifica se é um dos valores padrão do select
-        const options = Array.from(typeInput.options).map(o => o.value);
-        
-        if(options.includes(order.tipoAplicacao)) {
-            typeInput.value = order.tipoAplicacao;
-        } else {
-            // Se não for padrão, é "Outros"
-            typeInput.value = 'Outros';
-            customInput.style.display = 'block';
-            customInput.value = order.tipoAplicacao;
-        }
-    }
-
-    // 8. AJUSTA O TEXTO DO FORMULÁRIO PARA QUANDO ELE ABRIR
-    const btnSend = document.querySelector('#new-os-modal .btn-success');
-    btnSend.innerText = "Salvar Alterações"; // Muda texto do botão
-    document.querySelector('#new-os-modal h3').innerHTML = '<i class="fa-solid fa-pen-to-square"></i> Editar Solicitação';
-
-    // 9. AVISO VISUAL (Opcional, mas bom para o usuário entender)
-    showToast("Modo de Edição: Adicione ou remova talhões, depois clique em Gerar OS.", "info");
-}
-
-// Pequena função auxiliar para o efeito de abrir/fechar (Acordeão)
-function toggleStatCard(headerElement) {
-    const card = headerElement.parentElement;
-    card.classList.toggle('open');
-}
-
-// Inicializa
-document.addEventListener('DOMContentLoaded', loadProfilePhoto);
-
-// 4. "Ouvintes" de Conexão
-window.addEventListener('online', () => {
-    showToast("Internet restabelecida. Sincronizando...", "info");
-    syncOfflineOrders();
-});
-
-window.addEventListener('load', () => {
-    updateOfflineBadge();
-    // Tenta sincronizar ao abrir o app se tiver internet
-    if(navigator.onLine) syncOfflineOrders();
-
-});
-
-// Função para excluir uma OS específica
-function excluirOS(id) {
-  if(confirm("Tem certeza que deseja excluir esta solicitação?")) {
-    db.collection('service_orders').doc(id).delete()
-      .then(() => {
-        // Usa a função showToast que já existe no seu sistema
-        if(typeof showToast === 'function') {
-          showToast("Solicitação excluída!", "success");
-        } else {
-          alert("Solicitação excluída com sucesso!");
-        }
-      })
-      .catch(e => alert("Erro ao excluir: " + e.message));
-  }
-}
-
-async function limparOsDuplicadas() {
-  if(!confirm("Isso apagará registros repetidos (mesmo cliente, data, qtd de itens e serviço). Deseja continuar?")) return;
-  
-  try {
-    const snap = await db.collection('service_orders').get();
-    const seen = new Set();
-    let excluidas = 0;
-    
-    snap.forEach(doc => {
-      const os = doc.data();
-      const dataTxt = os.createdAt ? new Date(os.createdAt.seconds*1000).toLocaleDateString() : 'sem-data';
-      const chave = `${dataTxt}-${os.clientName}-${os.items ? os.items.length : 0}-${os.tipoAplicacao}`;
-      
-      if (seen.has(chave)) {
-        db.collection('service_orders').doc(doc.id).delete();
-        excluidas++;
-      } else {
-        seen.add(chave);
-      }
-    });
-    
-    alert(`Limpeza concluída! ${excluidas} solicitações duplicadas foram removidas.`);
-  } catch(error) {
-    alert("Erro na limpeza: " + error.message);
-  }
-}
-
-// ============================================
-// FUNÇÕES DE UNIR OS
-// ============================================
-
-function toggleMergeMode() {
-    const mergePanel = document.getElementById('merge-action-panel');
-    const headerCheckCol = document.querySelector('.merge-checkbox-col');
-    
-    if (!mergePanel) return;
-
-    if (mergePanel.classList.contains('hidden')) {
-        // Abre o modo de união
-        mergePanel.classList.remove('hidden');
-        if(headerCheckCol) headerCheckCol.classList.remove('hidden');
-        document.querySelectorAll('.merge-cell').forEach(cell => cell.classList.remove('hidden'));
-    } else {
-        // Fecha e limpa as seleções
-        mergePanel.classList.add('hidden');
-        if(headerCheckCol) headerCheckCol.classList.add('hidden');
-        document.querySelectorAll('.merge-cell').forEach(cell => cell.classList.add('hidden'));
-        
-        const selectAllCheck = document.getElementById('select-all-os');
-        if (selectAllCheck) selectAllCheck.checked = false;
-        document.querySelectorAll('.chk-merge-os').forEach(c => c.checked = false);
-    }
-}
-
-function toggleSelectAllOS(masterCheckbox) {
-    document.querySelectorAll('.chk-merge-os').forEach(c => {
-        if (!c.closest('tr').classList.contains('hidden')) {
-            c.checked = masterCheckbox.checked;
-        }
-    });
-}
-
-async function executeMergeOS() {
-    try {
-        const btnConfirm = document.querySelector('#merge-action-panel .btn-success');
-        if (btnConfirm && btnConfirm.disabled) return; 
-
-        const selected = document.querySelectorAll('.chk-merge-os:checked');
-        if(selected.length < 2) {
-            if(typeof showToast === 'function') showToast("Selecione pelo menos duas OS para unir!", "error");
-            else alert("Selecione pelo menos duas OS para unir!");
-            return;
-        }
-
-        let baseClientName = null;
-        let baseType = null;
-        let valid = true;
-        let idsToMerge = [];
-
-        selected.forEach(chk => {
-            const clientName = (chk.getAttribute('data-clientname') || "").trim().toLowerCase();
-            const type = (chk.getAttribute('data-type') || "").trim().toLowerCase();
-            
-            if (baseClientName === null) {
-                baseClientName = clientName;
-                baseType = type;
-            } else {
-                if (clientName !== baseClientName || type !== baseType) {
-                    valid = false;
-                }
-            }
-            idsToMerge.push(chk.value);
-        });
-
-        if (!valid) {
-            if(typeof showToast === 'function') showToast("Atenção! As OS precisam ser do mesmo Cliente e Tipo.", "error");
-            else alert("Atenção! As OS precisam ser do mesmo Cliente e Tipo.");
-            return;
-        }
-
-        // Removido o confirm() que travava o navegador. Ação agora é direta.
-        
-        if (btnConfirm) {
-            btnConfirm.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Unindo OS...';
-            btnConfirm.disabled = true;
-        }
-
-        let combinedItems = [];
-        let realClientUid = selected[0].getAttribute('data-clientuid');
-        let realClientName = selected[0].getAttribute('data-clientname');
-        let realType = selected[0].getAttribute('data-type');
-        
-        if (!realClientUid || realClientUid === "undefined" || realClientUid === "null") realClientUid = "";
-        if (!realClientName || realClientName === "undefined" || realClientName === "null") realClientName = "";
-        if (!realType || realType === "undefined" || realType === "null") realType = "";
-
-        for (let id of idsToMerge) {
-            const doc = await db.collection('service_orders').doc(id).get();
-            if(doc.exists) {
-                const data = doc.data();
-                if(data.items && Array.isArray(data.items)) {
-                    combinedItems = combinedItems.concat(data.items);
-                }
-            }
-        }
-
-        const novaOS = {
-            clientUid: realClientUid,
-            clientName: realClientName,
-            status: 'pendente',
-            tipoAplicacao: realType,
-            items: combinedItems,
-            offlineCreated: false,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        };
-
-        await db.collection('service_orders').add(novaOS);
-
-        if(typeof showToast === 'function') {
-            showToast("Nova OS unificada gerada com sucesso!", "success");
-        } else {
-            alert("Nova OS unificada gerada com sucesso!");
-        }
-        
-        // Garante que o painel será fechado em segurança
-        const mergePanel = document.getElementById('merge-action-panel');
-        if (mergePanel && !mergePanel.classList.contains('hidden')) {
-            toggleMergeMode();
-        }
-
-    } catch (error) {
-        console.error("Erro ao unir:", error);
-        if(typeof showToast === 'function') showToast("Erro: " + error.message, "error");
-        else alert("Erro ao unir as OS. Detalhes: " + error.message);
-    } finally {
-        const btnConfirm = document.querySelector('#merge-action-panel .btn-success');
-        if (btnConfirm) {
-            btnConfirm.innerHTML = '<i class="fa-solid fa-check"></i> Confirmar União';
-            btnConfirm.disabled = false;
-        }
-    }
-}
-
-
+body.dark-mode .stat-value { color: #f1f5f9; }
+body.dark-mode .stat-value.highlight { color: #38bdf8; }
